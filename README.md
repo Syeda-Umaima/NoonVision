@@ -1,3 +1,14 @@
+---
+title: NoonVision
+emoji: 🦾
+colorFrom: "#4CAF50"
+colorTo: "#388E3C"
+sdk: gradio
+sdk_version: "3.43.0"
+app_file: app.py
+pinned: true
+---
+
 # NoonVision – AI-Powered Object Detection for the Visually Impaired
 
 NoonVision is a web-based AI application designed to assist visually impaired individuals.  
