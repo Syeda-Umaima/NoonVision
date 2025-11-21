@@ -1,8 +1,8 @@
 ---
 title: NoonVision
 emoji: 🦾
-colorFrom: "#4CAF50"
-colorTo: "#388E3C"
+colorFrom: green
+colorTo: blue
 sdk: gradio
 sdk_version: "3.43.0"
 app_file: app.py
