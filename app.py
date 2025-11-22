@@ -1,9 +1,3 @@
-
----
-
-## 🚀 **3. Enhanced app.py (Production-Ready)**
-
-```python
 import gradio as gr
 import numpy as np
 from ultralytics import YOLO
