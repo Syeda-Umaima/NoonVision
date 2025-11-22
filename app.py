@@ -1,80 +1,133 @@
-import gradio as gr
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import HTMLResponse
 from ultralytics import YOLO
-from PIL import Image, ImageDraw, ImageFont
+import cv2
 import numpy as np
-from gtts import gTTS
-import os
+import pyttsx3
+import base64
+import threading
+import speech_recognition as sr
 
-# Load YOLOv8 small model
-model = YOLO("yolov8m.pt")  # small, fast model
+app = FastAPI()
 
-def detect_objects_with_voice(image):
-    """
-    Input: PIL Image
-    Output:
-        - Annotated Image
-        - Text description with confidence for helpers
-        - Autoplay Audio with object names only
-    """
-    if image is None:
-        return None, "No image provided.", None
+# Load YOLOv8m
+model = YOLO("yolov8m.pt")
 
-    img = np.array(image)
+# Text-to-speech
+engine = pyttsx3.init()
+engine.setProperty("rate", 150)
+
+def speak(text):
+    """Speak automatically without button press."""
+    engine.say(text)
+    engine.runAndWait()
+
+
+def listen_for_voice_command():
+    """Continuously listen for word 'detect'."""
+    recognizer = sr.Recognizer()
+
+    while True:
+        try:
+            with sr.Microphone() as source:
+                recognizer.adjust_for_ambient_noise(source)
+                print("Listening for voice command: Say 'detect'...")
+                audio = recognizer.listen(source)
+
+            command = recognizer.recognize_google(audio).lower()
+            print("Heard:", command)
+
+            if "detect" in command or "what's in front of me" in command:
+                print("Voice detected → Capturing image now")
+                capture_and_detect()
+
+        except:
+            pass
+
+
+def capture_and_detect():
+    """Capture from webcam → Detect → Auto speak."""
+    cap = cv2.VideoCapture(0)
+
+    ret, frame = cap.read()
+    cap.release()
+
+    if not ret:
+        speak("Camera not working")
+        return {"error": "camera failure"}
+
+    # Run YOLO
+    results = model(frame)[0]
+
+    # Extract labels & accuracy
+    detections = []
+    for box in results.boxes:
+        cls = int(box.cls)
+        conf = float(box.conf)
+        label = results.names[cls]
+        detections.append((label, conf))
+
+    # If nothing found
+    if not detections:
+        speak("No objects detected in front of you")
+        return {"output": "None"}
+
+    # Prepare spoken output without accuracy
+    spoken = "Detected objects are: " + ", ".join([d[0] for d in detections])
+    speak(spoken)
+
+    # Prepare accuracy text for screen
+    accuracy_text = "\n".join([f"{d[0]} ➤ {round(d[1]*100, 2)}%" for d in detections])
+
+    # Encode frame for display
+    _, buffer = cv2.imencode(".jpg", frame)
+    encoded = base64.b64encode(buffer).decode()
+
+    return {
+        "spoken": spoken,
+        "accuracy": accuracy_text,
+        "image": encoded
+    }
+
+
+@app.post("/upload")
+async def upload_image(file: UploadFile = File(...)):
+    """Manual image upload version."""
+    image_data = await file.read()
+    np_img = np.frombuffer(image_data, np.uint8)
+    img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+
     results = model(img)[0]
 
-    boxes = results.boxes.xyxy.cpu().numpy()
-    labels = results.names
-    confidences = results.boxes.conf.cpu().numpy()
+    detections = []
+    for box in results.boxes:
+        cls = int(box.cls)
+        conf = float(box.conf)
+        label = results.names[cls]
+        detections.append((label, conf))
 
-    draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default()
-    detected_objects = []
-    detected_objects_audio = []
+    if not detections:
+        speak("No objects detected in the image")
+        return {"output": "None"}
 
-    for i, box in enumerate(boxes):
-        x1, y1, x2, y2 = box
-        cls_id = int(results.boxes.cls[i])
-        label = labels[cls_id]
-        conf = confidences[i]
+    spoken = "Detected objects are: " + ", ".join([d[0] for d in detections])
+    speak(spoken)
 
-        # Keep for text display (with confidence)
-        detected_objects.append(f"{label}: {conf:.2f}")
+    accuracy_text = "\n".join([f"{d[0]} ➤ {round(d[1]*100, 2)}%" for d in detections])
 
-        # Keep only object names for audio
-        detected_objects_audio.append(label)
+    return {
+        "spoken": spoken,
+        "accuracy": accuracy_text
+    }
 
-        # Draw bounding box + confidence
-        draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
-        draw.text((x1, y1 - 10), f"{label} {conf:.2f}", fill="red", font=font)
 
-    # ----------------------
-    # Prepare description and TTS audio
-    # ----------------------
-    description_text = "\n".join(detected_objects) if detected_objects else "No objects detected."
-    
-    if detected_objects_audio:
-        tts_text = "Detected objects are: " + ", ".join(detected_objects_audio)
-        tts = gTTS(text=tts_text, lang='en')
-        audio_file = "detected_objects.mp3"
-        tts.save(audio_file)
-    else:
-        audio_file = None
+@app.get("/")
+def home():
+    return HTMLResponse("""
+    <h2>Vision App Running</h2>
+    <p>Say <b>“Detect”</b> to automatically capture image and hear results.</p>
+    """)
 
-    return image, description_text, audio_file
 
-# ----------------------
-# Gradio Interface
-# ----------------------
-iface = gr.Interface(
-    fn=detect_objects_with_voice,
-    inputs=gr.Image(type="pil", source="webcam"),
-    outputs=[
-        gr.Image(type="pil"),
-        gr.Textbox(lines=10, label="Detected Objects (with confidence)"),
-        gr.Audio(type="filepath", autoplay=True)  # autoplay for hands-free experience
-    ],
-    title="NoonVision – AI Vision for the Visually Impaired",
-    description="Point your webcam at an object. NoonVision detects it, shows bounding boxes, lists detected objects with confidence for helpers, and speaks the objects automatically!"
-)
-
-iface.launch()
+# Start voice listener in background
+threading.Thread(target=listen_for_voice_command, daemon=True).start()
