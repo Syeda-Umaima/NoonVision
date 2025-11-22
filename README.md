@@ -24,4 +24,4 @@ It detects objects in real time using your webcam and speaks/labels them to help
 - Open the app in your browser  
 - Allow camera access  
 - Point the webcam at an object  
-- The app shows bounding boxes and lists detected objects
+- The app shows bounding boxes and lists detected objects, also speaks them aloud
