@@ -1,141 +1,49 @@
-import gradio as gr
-import numpy as np
+import base64
+import io
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from PIL import Image
 from ultralytics import YOLO
-from PIL import Image, ImageDraw, ImageFont
-from gtts import gTTS
-import os
-from transformers import pipeline
 
-# --- GLOBAL SETUP AND MODEL LOADING ---
-# Load YOLOv8 medium model
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 model = YOLO("yolov8m.pt")
 
-# Load a small ASR model
-try:
-    stt_pipe = pipeline("automatic-speech-recognition", model="openai/whisper-tiny.en")
-except Exception as e:
-    stt_pipe = None
-    print(f"STT model failed to load: {e}")
+class ImageData(BaseModel):
+    image_base64: str
 
-# --- DETECTION AND AUDIO GENERATION FUNCTION (Unchanged) ---
-def detect_objects_with_voice(image, status_message):
-    """
-    Performs object detection, annotates the image, prepares the text summary,
-    and generates gTTS audio output.
-    Takes the status_message as an extra input to reset the status box.
-    """
-    conf_threshold = 0.15 
-
-    if image is None:
-        return None, "No image provided.", None
-
-    img_np = np.array(image)
-    results = model(img_np, conf=conf_threshold)[0]
-
-    boxes = results.boxes.xyxy.cpu().numpy()
-    labels = results.names
-    confidences = results.boxes.conf.cpu().numpy()
-
-    draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default()
-    detected_objects = []
-    detected_objects_audio = []
-
-    for i, box in enumerate(boxes):
-        x1, y1, x2, y2 = box
-        cls_id = int(results.boxes.cls[i])
-        label = labels[cls_id]
-        conf = confidences[i]
-
-        detected_objects.append(f"{label}: {conf:.2f}")
-        detected_objects_audio.append(label)
-
-        draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-        draw.text((x1, y1 - 15), f"{label} {conf:.2f}", fill="red", font=font)
-
-    description_text = "\n".join(detected_objects) if detected_objects else "No objects detected."
+@app.post("/detect")
+async def detect_objects(data: ImageData):
+    img_bytes = base64.b64decode(data.image_base64.split(",")[1])
+    img = Image.open(io.BytesIO(img_bytes))
     
-    audio_file = "detected_objects.mp3"
-    
-    if detected_objects_audio:
-        tts_text = "I see the following objects: " + ", ".join(detected_objects_audio)
+    results = model.predict(img)[0]
+
+    detections = []
+    spoken_list = []
+
+    for box in results.boxes:
+        cls_id = int(box.cls[0])
+        label = results.names[cls_id]
+        conf = float(box.conf[0])
+        detections.append({"label": label, "confidence": round(conf, 2)})
+        spoken_list.append(label)
+
+    if len(spoken_list) == 0:
+        speech = "No objects detected."
     else:
-        tts_text = "I couldn't detect any common objects. Please try again."
-        
-    tts = gTTS(text=tts_text, lang='en')
-    tts.save(audio_file)
-        
-    # We must return the original image input as one of the outputs to ensure the flow works.
-    return image, image, description_text, audio_file, "Detection complete."
+        speech = "Detected objects are: " + ", ".join(spoken_list)
 
-# --- SPEECH-TO-TEXT AND TRIGGER FUNCTION (Revised for Direct Detection) ---
-def transcribe_audio_and_check_trigger(audio_file_path, image_input):
-    """
-    Transcribes audio and initiates the detect_objects_with_voice function directly 
-    if a trigger phrase is found.
-    """
-    if not stt_pipe or audio_file_path is None:
-        return image_input, "STT service unavailable or no audio recorded.", False
-
-    result = stt_pipe(audio_file_path)
-    transcribed_text = result["text"].strip().lower()
-    
-    # Define trigger phrases
-    is_trigger = False
-    if "detect" in transcribed_text or "what is in front of me" in transcribed_text or "what's this" in transcribed_text:
-        is_trigger = True
-    
-    if is_trigger:
-        status_message = f"✅ Command recognized: '{transcribed_text}'. Capturing image..."
-        # If triggered, call the main detection function directly, passing the image input
-        return detect_objects_with_voice(image_input, status_message)
-    else:
-        status_message = f"❌ Command not recognized: '{transcribed_text}'. Say 'Detect' or 'What is in front of me'."
-        # If not triggered, clear results and update status
-        # Returns the same image_input, and None for outputs that should be cleared/unchanged
-        return image_input, image_input, status_message, None, status_message
-
-# --- GRADIO BLOCKS INTERFACE ---
-with gr.Blocks(title="NoonVision – Voice-Activated Detection") as demo:
-    gr.Markdown("## 🎤 NoonVision – Voice-Activated Object Identifier")
-    gr.Markdown(
-        """
-        **Instructions:** Simply **click the microphone button** and say a command like **'Detect'** or **'What is in front of me?'** The system will automatically capture the current frame, run detection, and speak the results.
-        """
-    )
-    
-    # 1. Main Display and Input Area
-    with gr.Row():
-        
-        # Column 1: Camera Input (M2) and Detection Output (M4)
-        with gr.Column(scale=2):
-            image_input = gr.Image(type="pil", source="webcam", streaming=True, label="Live Webcam Feed")
-            image_output = gr.Image(type="pil", label="Annotated Detection Result")
-            
-        # Column 2: Voice Input and Text/Audio Results
-        with gr.Column(scale=1):
-            
-            gr.Markdown("### 🔊 Voice Command")
-            # We set type="filepath" which forces a record/stop interaction, preventing immediate stream
-            # The user must click to start and click to stop.
-            voice_input = gr.Audio(sources=["microphone"], type="filepath", label="Click to Record Command")
-            
-            transcribed_text_output = gr.Textbox(label="Status / Transcribed Command")
-
-            gr.Markdown("### 💬 Results")
-            text_output = gr.Textbox(lines=5, label="Object Details (for helpers)")
-            audio_output = gr.Audio(type="filepath", autoplay=True, label="Spoken Objects")
-
-    # --- Event Wiring (M4's Critical Task) ---
-    
-    # The microphone's 'change' event fires when recording stops and the file is ready.
-    # It directly calls the STT and Detection logic, passing the current webcam frame.
-    voice_input.change(
-        fn=transcribe_audio_and_check_trigger,
-        inputs=[voice_input, image_input],
-        # The outputs are the results of the detection function call
-        outputs=[image_input, image_output, transcribed_text_output, audio_output, text_output], 
-        show_progress=True,
-    )
-
-demo.launch()
+    return {
+        "detections": detections,
+        "speech_text": speech
+    }
