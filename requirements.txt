@@ -1,11 +1,11 @@
-gradio>=3.43
-torch>=2.1
-torchvision>=0.16
-ultralytics>=8.1
-numpy
-Pillow
-gTTS
-# Dependencies for Speech-to-Text (Whisper/transformers)
-transformers
-datasets
-soundfile
+gradio>=4.0.0
+torch>=2.1.0
+torchvision>=0.16.0
+ultralytics>=8.1.0
+numpy>=1.24.0
+Pillow>=10.0.0
+gTTS>=2.4.0
+transformers>=4.35.0
+datasets>=2.14.0
+soundfile>=0.12.1
+librosa>=0.10.0
