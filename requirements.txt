@@ -5,3 +5,7 @@ ultralytics>=8.1
 numpy
 Pillow
 gTTS
+# New dependencies for Speech-to-Text (Whisper/transformers)
+transformers
+datasets
+soundfile
