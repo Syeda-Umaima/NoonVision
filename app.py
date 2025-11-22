@@ -2,33 +2,23 @@ import gradio as gr
 from ultralytics import YOLO
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
-import pyttsx3  # For voice output
+from gtts import gTTS
+import os
 
-# ------------------------------
-# Load YOLOv8 small pre-trained model
-# ------------------------------
+# Load YOLOv8 small model
 model = YOLO("yolov8n.pt")  # small, fast model
 
-# ------------------------------
-# Initialize TTS engine
-# ------------------------------
-engine = pyttsx3.init()
-engine.setProperty('rate', 150)  # speech speed
-
-# ------------------------------
-# Object Detection Function
-# ------------------------------
-def detect_objects(image):
+def detect_objects_with_voice(image):
     """
     Input: PIL Image
-    Output: Image with bounding boxes, Text description
-    Also speaks out the detected objects
+    Output: Annotated Image + Detected Objects List + TTS Audio
     """
     if image is None:
-        return None, "No image provided."
+        return None, "No image provided.", None
 
-    img = np.array(image)  # Convert to numpy array
-    results = model(img)[0]  # Run detection
+    # Convert PIL → numpy
+    img = np.array(image)
+    results = model(img)[0]
 
     boxes = results.boxes.xyxy.cpu().numpy()
     labels = results.names
@@ -45,29 +35,33 @@ def detect_objects(image):
         conf = confidences[i]
         detected_objects.append(f"{label} ({conf:.2f})")
 
-        # Draw rectangle & label
+        # Draw rectangle + label
         draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
         draw.text((x1, y1 - 10), f"{label} {conf:.2f}", fill="red", font=font)
 
     description = "Detected objects: " + ", ".join(detected_objects) if detected_objects else "No objects detected."
 
-    # Speak detected objects (voice)
+    # ----------------------
+    # Generate TTS audio
+    # ----------------------
     if detected_objects:
-        engine.say("Detected objects are " + ", ".join([label.split("(")[0] for label in detected_objects]))
-        engine.runAndWait()
+        tts = gTTS(text=description, lang='en')
+        audio_file = "detected_objects.mp3"
+        tts.save(audio_file)
+    else:
+        audio_file = None
 
-    return image, description
-  
+    return image, description, audio_file
 
-# ------------------------------
+# ----------------------
 # Gradio Interface
-# ------------------------------
+# ----------------------
 iface = gr.Interface(
-    fn=detect_objects,
+    fn=detect_objects_with_voice,
     inputs=gr.Image(type="pil", source="webcam"),
-    outputs=[gr.Image(type="pil"), gr.Textbox()],
+    outputs=[gr.Image(type="pil"), gr.Textbox(), gr.Audio(type="filepath")],
     title="NoonVision – AI Vision for the Visually Impaired",
-    description="Bring an object in front of your webcam. NoonVision detects it and tells you what it is, both visually and via voice!"
+    description="Point your webcam at an object. NoonVision detects it, shows bounding boxes, and speaks the objects detected!"
 )
 
 iface.launch()
