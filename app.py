@@ -6,7 +6,7 @@ from gtts import gTTS
 import os
 
 # Load YOLOv8 small model
-model = YOLO("yolov8n.pt")  # small, fast model
+model = YOLO("yolov8m.pt")  # small, fast model
 
 def detect_objects_with_voice(image):
     """
