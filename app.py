@@ -277,10 +277,10 @@ with gr.Blocks(
     # Main Interface - Just Camera and Results
     with gr.Row():
         with gr.Column(scale=1):
+            # Use Webcam component without streaming for compatibility
             image_input = gr.Image(
                 type="pil",
-                sources=["webcam"],
-                streaming=True,
+                sources="webcam",  # Single source, not list
                 label="📷 Live Camera Feed",
                 height=500
             )
@@ -294,7 +294,7 @@ with gr.Blocks(
     
     # Hidden components for voice and audio
     voice_input = gr.Audio(
-        sources=["microphone"],
+        sources="microphone",  # Single source
         type="numpy",
         streaming=True,
         visible=False
