@@ -4,7 +4,7 @@ emoji: 🦾
 colorFrom: green
 colorTo: blue
 sdk: gradio
-sdk_version: 4.44.1
+sdk_version: 4.48.0
 app_file: app.py
 pinned: true
 ---
@@ -19,8 +19,7 @@ pinned: true
 - Automatic speech recognition using **Whisper-tiny** (CPU)
 - Hands-free trigger phrase detection
 - Audio output describing detected objects using **gTTS**
-- Compatible with **Gradio v4.44.1+**, fully CPU-only
-- Optimized for Hugging Face Spaces deployment
+- Simple and reliable Gradio interface
 
 ## 🎯 Trigger Phrases
 
@@ -38,26 +37,16 @@ pinned: true
 ## 🚀 Usage
 
 1. **Allow permissions** - Click "Allow" when prompted for camera and microphone access
-2. **Speak a command** - Clearly say one of the trigger phrases
-3. **View results** - See detected objects with bounding boxes
-4. **Listen** - Hear the audio description of what was detected
+2. **Click the microphone** - Press the record button and speak a command
+3. **Wait for processing** - The app will detect objects in the camera view
+4. **View and listen** - See detected objects with bounding boxes and hear the audio description
 
 ## 🔧 Technical Details
 
 - **Models**: YOLOv8m for object detection, Whisper-tiny for speech recognition
 - **Platform**: CPU-only optimization
-- **Framework**: Gradio 4.44.1+ for web interface
+- **Framework**: Gradio 4.48.0 for stable web interface
 - **Compatibility**: Fully compatible with Hugging Face Spaces
-
-## 📁 Project Structure
-noonvision/
-│
-├── app.py # Main application
-├── requirements.txt # Python dependencies
-├── README.md # Documentation
-└── .gitattributes # Git LFS configuration
-
-text
 
 ## ⚠️ Notes
 
@@ -71,6 +60,7 @@ text
 **Microphone not working:**
 - Check browser permissions
 - Ensure no other apps are using the microphone
+- Click the microphone button to start recording
 
 **Camera not working:**
 - Allow camera permissions
