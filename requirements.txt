@@ -1,6 +1,11 @@
-gradio==4.44.0
-ultralytics==8.1.0
-Pillow
-numpy
-gTTS
-soundfile
+gradio>=6.0.0
+torch>=2.1.0
+torchvision>=0.16.0
+ultralytics>=8.1.0
+numpy>=1.24.0
+Pillow>=10.0.0
+gTTS>=2.4.0
+transformers>=4.35.0
+datasets>=2.14.0
+soundfile>=0.12.1
+librosa>=0.10.0
