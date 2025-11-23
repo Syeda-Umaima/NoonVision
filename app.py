@@ -1,279 +1,170 @@
-import gradio as gr
-import numpy as np
-from ultralytics import YOLO
-from PIL import Image, ImageDraw, ImageFont
-from gtts import gTTS
+# app.py
+# FastAPI backend — CPU-optimized, multi-mode YOLO selection
+
+import io
 import time
-from transformers import pipeline
+import base64
+from typing import Tuple, List, Dict
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 import torch
-from collections import Counter
+from ultralytics import YOLO
 
-# ============================================
-# OPTIMIZED CONFIGURATION FOR SPEED
-# ============================================
-CONF_THRESHOLD = 0.20  # Lower = more detections
-IMG_SIZE = 640  # Reduced for 2x faster detection
-BOX_COLOR = (0, 255, 0)  # Green for better visibility
-BOX_WIDTH = 3
-FONT_SIZE = 16
-MAX_DET = 300  # Max detections per image
+app = FastAPI()
 
-# ============================================
-# FAST MODEL INITIALIZATION
-# ============================================
-print("🚀 Loading models...")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+# -------------------------
+# CONFIG: Choose MODE HERE
+# Options: "ultrafast", "balanced", "accurate"
+# "ultrafast" -> yolov8n.pt (best for speed on CPU)
+# "balanced"  -> yolov8s.pt
+# "accurate"  -> yolov8m.pt
+# If you have yolo11n or other small models you may set paths accordingly
+# -------------------------
+MODEL_MODE = "ultrafast"   # change to "balanced" or "accurate" as needed
+
+# Map modes to model filenames and image sizes
+MODEL_MAP = {
+    "ultrafast": {"path": "yolov8n.pt", "img_size": 416},
+    "balanced":  {"path": "yolov8s.pt", "img_size": 640},
+    "accurate":  {"path": "yolov8m.pt", "img_size": 640},
+}
+
+if MODEL_MODE not in MODEL_MAP:
+    MODEL_MODE = "ultrafast"
+
+MODEL_PATH = MODEL_MAP[MODEL_MODE]["path"]
+IMG_SIZE = MODEL_MAP[MODEL_MODE]["img_size"]
+
+# Confidence threshold (can tune)
+CONF_THRESHOLD = 0.25
+
+# Load model (CPU)
+print(f"Loading model {MODEL_PATH} on CPU (mode={MODEL_MODE}) ...")
 try:
-    model = YOLO("yolov8m.pt")
-    model.overrides['conf'] = CONF_THRESHOLD
-    model.overrides['max_det'] = MAX_DET
-    # Warmup for faster first detection
-    dummy = np.zeros((640, 640, 3), dtype=np.uint8)
-    _ = model(dummy, verbose=False)
-    print("✅ YOLOv8m loaded & optimized")
+    model = YOLO(MODEL_PATH)
+    # Force CPU (explicit)
+    model.to("cpu")
+    # Some speed improvements for CPU:
+    try:
+        model.fuse()  # fuse conv+bce where possible
+    except Exception:
+        pass
+    # Warm up with a small dummy
+    dummy = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
+    _ = model(dummy, imgsz=IMG_SIZE, verbose=False)
+    print("Model loaded and warmed up.")
 except Exception as e:
-    print(f"❌ YOLO failed: {e}")
+    print("Failed to load model:", e)
     model = None
 
-try:
-    device = 0 if torch.cuda.is_available() else -1
-    stt_pipe = pipeline(
-        "automatic-speech-recognition",
-        model="openai/whisper-tiny.en",
-        device=device
-    )
-    print(f"✅ Whisper loaded ({'GPU' if device == 0 else 'CPU'})")
-except Exception as e:
-    print(f"⚠️ STT failed: {e}")
-    stt_pipe = None
+# Input model for POST
+class ImageData(BaseModel):
+    image_base64: str
 
-print("✅ Ready!")
+# Utility: resize while keeping aspect ratio and pad
+def preprocess_pil_image(pil_img: Image.Image, target_size: int) -> Tuple[np.ndarray, Image.Image]:
+    # Convert to RGB and resize (letterbox)
+    img = pil_img.convert("RGB")
+    w, h = img.size
+    scale = target_size / max(w, h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
+    # create padded canvas
+    canvas = Image.new("RGB", (target_size, target_size), (114, 114, 114))
+    paste_x = (target_size - new_w) // 2
+    paste_y = (target_size - new_h) // 2
+    canvas.paste(resized, (paste_x, paste_y))
+    return np.array(canvas), canvas
 
-# ============================================
-# TRIGGER PHRASES
-# ============================================
-TRIGGERS = [
-    "detect", "what do you see", "what's in front",
-    "identify", "what's this", "scan", "look"
-]
-
-# ============================================
-# OPTIMIZED DETECTION (MUCH FASTER)
-# ============================================
-def detect_fast(image):
-    """Ultra-fast detection with caching"""
-    if image is None or model is None:
-        return None, None
-    
+def format_detections(results, orig_size: Tuple[int, int], pad_info: Tuple[int,int,int,int], conf_threshold=CONF_THRESHOLD):
+    # results: Ultralytics results object (boxes)
+    # pad_info: (paste_x, paste_y, new_w, new_h) used if needed — in this simplified version we return coarse boxes
+    detections = []
+    if results is None:
+        return detections
     try:
-        start = time.time()
-        
-        # Convert image
-        if isinstance(image, np.ndarray):
-            img_pil = Image.fromarray(image)
-        else:
-            img_pil = image.copy()
-        
-        img_np = np.array(img_pil)
-        
-        # FAST Detection with optimized settings
-        results = model.predict(
-            img_np,
-            imgsz=IMG_SIZE,
-            conf=CONF_THRESHOLD,
-            verbose=False,
-            half=False,  # Use FP16 if GPU available
-            device=0 if torch.cuda.is_available() else 'cpu'
-        )[0]
-        
         boxes = results.boxes.xyxy.cpu().numpy()
-        confidences = results.boxes.conf.cpu().numpy()
-        class_ids = results.boxes.cls.cpu().numpy()
+        confs = results.boxes.conf.cpu().numpy()
+        cls_ids = results.boxes.cls.cpu().numpy().astype(int)
         names = results.names
-        
-        # Fast drawing
-        draw = ImageDraw.Draw(img_pil)
-        font = ImageFont.load_default()
-        
-        detected = []
-        
         for i, box in enumerate(boxes):
-            x1, y1, x2, y2 = map(int, box)
-            label = names[int(class_ids[i])]
-            conf = confidences[i]
-            detected.append(label)
-            
-            # Draw box and label
-            draw.rectangle([x1, y1, x2, y2], outline=BOX_COLOR, width=BOX_WIDTH)
-            draw.text((x1, y1 - 15), f"{label} {conf:.2f}", fill=BOX_COLOR, font=font)
-        
-        # Generate audio
-        audio = make_audio(detected)
-        
-        elapsed = time.time() - start
-        print(f"⚡ Detection: {elapsed:.2f}s | Found: {len(detected)}")
-        
-        return img_pil, audio
-        
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return None, None
+            conf = float(confs[i])
+            if conf < conf_threshold:
+                continue
+            cls = int(cls_ids[i])
+            label = names[cls]
+            x1, y1, x2, y2 = map(float, box.tolist())
+            detections.append({
+                "label": label,
+                "confidence": round(conf, 2),
+                "box": [round(x1,2), round(y1,2), round(x2,2), round(y2,2)]
+            })
+    except Exception:
+        pass
+    return detections
 
-def make_audio(labels):
-    """Fast audio generation"""
+@app.post("/detect")
+async def detect_endpoint(data: ImageData):
+    start = time.time()
+    if model is None:
+        return {"error": "Model not loaded", "detections": [], "speech_text": "Model not available."}
     try:
-        if not labels:
-            text = "No objects detected."
+        # decode base64
+        header, b64 = data.image_base64.split(",", 1) if "," in data.image_base64 else ("", data.image_base64)
+        img_bytes = base64.b64decode(b64)
+        pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        orig_w, orig_h = pil_img.size
+
+        # preprocess (letterbox)
+        in_np, canvas = preprocess_pil_image(pil_img, IMG_SIZE)
+
+        # inference (CPU) — minimal overhead
+        # Use model.predict to specify imgsz and device explicitly
+        results = model.predict(source=in_np, imgsz=IMG_SIZE, device="cpu", conf=CONF_THRESHOLD, verbose=False)[0]
+
+        detections = format_detections(results, (orig_w, orig_h), (0,0,0,0), conf_threshold=CONF_THRESHOLD)
+
+        # Build speech_text with counts (short and clean)
+        if len(detections) == 0:
+            speech_text = "No objects detected."
         else:
-            counts = Counter(labels)
-            if len(counts) == 1:
-                obj, cnt = list(counts.items())[0]
-                text = f"I see {cnt} {obj}{'s' if cnt > 1 else ''}."
-            else:
-                items = [f"{cnt} {obj}{'s' if cnt > 1 else ''}" for obj, cnt in counts.items()]
-                if len(items) == 2:
-                    text = f"I see {items[0]} and {items[1]}."
+            # count labels
+            labels = [d["label"] for d in detections]
+            from collections import Counter
+            cnt = Counter(labels)
+            parts = []
+            for k,v in cnt.items():
+                if v == 1:
+                    parts.append(f"one {k}")
                 else:
-                    text = f"I see {', '.join(items[:-1])}, and {items[-1]}."
-        
-        # Fast audio save
-        audio_file = f"audio_{int(time.time()*1000)}.mp3"
-        tts = gTTS(text=text, lang='en', slow=False, tld='com')
-        tts.save(audio_file)
-        return audio_file
+                    parts.append(f"{v} {k}s")
+            # keep description short
+            if len(parts) == 1:
+                speech_text = f"I see {parts[0]}."
+            elif len(parts) == 2:
+                speech_text = f"I see {parts[0]} and {parts[1]}."
+            else:
+                speech_text = "I see " + ", ".join(parts[:-1]) + ", and " + parts[-1] + "."
+
+        elapsed = time.time() - start
+        return {
+            "detections": detections,
+            "speech_text": speech_text,
+            "mode": MODEL_MODE,
+            "elapsed": round(elapsed, 3),
+            "img_size": IMG_SIZE
+        }
+
     except Exception as e:
-        print(f"⚠️ Audio error: {e}")
-        return None
-
-# ============================================
-# VOICE PROCESSING (OPTIMIZED)
-# ============================================
-def process_voice(audio_tuple):
-    """Fast voice transcription"""
-    if audio_tuple is None or stt_pipe is None:
-        return ""
-    
-    try:
-        sample_rate, audio_data = audio_tuple
-        
-        # Quick audio processing
-        if len(audio_data.shape) > 1:
-            audio_data = audio_data.mean(axis=1)
-        
-        audio_data = audio_data.astype(np.float32)
-        if audio_data.max() > 1.0:
-            audio_data = audio_data / 32768.0
-        
-        # Fast transcription
-        result = stt_pipe({"sampling_rate": sample_rate, "raw": audio_data})
-        text = result["text"].strip().lower()
-        
-        return text if len(text) > 1 else ""
-    except:
-        return ""
-
-def check_camera(frame, transcript, last_result):
-    """Main loop - checks for triggers"""
-    if frame is None:
-        return frame, last_result, None, "⏳ Waiting for camera..."
-    
-    # Check for trigger
-    triggered = any(t in transcript for t in TRIGGERS)
-    
-    if triggered:
-        print(f"🎤 Trigger: '{transcript}'")
-        img, audio = detect_fast(frame)
-        status = f"✅ '{transcript}' - DETECTED!"
-        return frame, img, audio, status
-    
-    status = f"🎤 Listening... {transcript}" if transcript else "🎤 Say 'Detect'"
-    return frame, last_result, None, status
-
-# ============================================
-# INTERFACE (CLEAN & FAST)
-# ============================================
-with gr.Blocks(title="NoonVision - Fast AI Vision") as demo:
-    
-    gr.HTML("""
-        <div style="text-align: center; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; margin-bottom: 20px;">
-            <h1>🦾 NoonVision - Ultra-Fast AI Vision</h1>
-            <h2>🎤 Just say "DETECT" - Instant results!</h2>
-        </div>
-    """)
-    
-    gr.Markdown("""
-    ### ⚡ Ultra-Fast Mode Active
-    - 🚀 **2x Faster Detection** (640px processing)
-    - 🎯 **Higher Accuracy** (20% confidence threshold)
-    - 🎤 **Auto-Listening** (No buttons needed)
-    - 🔊 **Instant Audio** (Results in <1 second)
-    
-    **Just say:** "Detect", "What do you see?", "Scan"
-    """)
-    
-    with gr.Row():
-        with gr.Column():
-            camera = gr.Image(
-                sources="webcam",
-                type="pil",
-                label="📷 Live Feed",
-                streaming=True,
-                height=400
-            )
-        
-        with gr.Column():
-            result = gr.Image(
-                type="pil",
-                label="🎯 Detected Objects",
-                height=400
-            )
-    
-    status = gr.Textbox(
-        label="📊 Status",
-        value="Ready! Say 'Detect' to start...",
-        lines=2
-    )
-    
-    # Hidden components
-    voice = gr.Audio(
-        sources="microphone",
-        type="numpy",
-        streaming=True,
-        visible=False
-    )
-    
-    transcript = gr.State(value="")
-    
-    audio_out = gr.Audio(
-        type="filepath",
-        autoplay=True,
-        visible=False
-    )
-    
-    gr.Markdown("""
-    ---
-    **💡 Tips for Best Speed:**
-    - Good lighting = faster detection
-    - Keep objects 2-5 feet away
-    - Speak clearly near microphone
-    
-    **⚡ Performance:** <0.5s detection | <0.3s voice | <0.5s audio = **<1.5s total!**
-    """)
-    
-    # Event handlers
-    voice.stream(
-        fn=process_voice,
-        inputs=[voice],
-        outputs=[transcript],
-        show_progress=False
-    )
-    
-    camera.stream(
-        fn=check_camera,
-        inputs=[camera, transcript, result],
-        outputs=[camera, result, audio_out, status],
-        show_progress=False
-    )
-
-if __name__ == "__main__":
-    demo.launch()
+        return {"error": str(e), "detections": [], "speech_text": "Error during detection."}

@@ -1,6 +1,6 @@
-gradio==3.43.0
+fastapi
+uvicorn
 ultralytics
-Pillow
+pillow
+python-multipart
 numpy
-gTTS
-soundfile

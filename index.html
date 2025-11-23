@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>NoonVision (CPU-optimized)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>NoonVision</h1>
+    <p class="subtitle">Voice-activated object detection — say "detect"</p>
+
+    <video id="camera" autoplay playsinline muted></video>
+
+    <button id="detectBtn" class="big-btn">Tap to Detect (or say "detect")</button>
+
+    <div id="status" class="status">Waiting for camera & microphone permissions...</div>
+    <div id="results" class="results"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
