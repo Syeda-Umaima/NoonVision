@@ -279,7 +279,7 @@ with gr.Blocks(
         with gr.Column(scale=1):
             image_input = gr.Image(
                 type="pil",
-                source="webcam",
+                sources=["webcam"],  # Changed from 'source' to 'sources'
                 streaming=True,
                 label="📷 Live Camera Feed",
                 height=500
