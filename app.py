@@ -127,10 +127,6 @@ def process_voice(audio_file, image):
     except Exception as e:
         return None, None, f"❌ Error: {str(e)}"
 
-def clear_all():
-    """Clear all outputs and reset to ready state"""
-    return None, None, "Ready for next detection!", None
-
 with gr.Blocks(title="NoonVision", theme=gr.themes.Soft()) as demo:
     
     gr.HTML('<div style="text-align: center; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; margin-bottom: 20px;"><h1>🦾 NoonVision</h1><h2>AI Vision Assistant</h2><p>✨ Voice-Activated Object Detection</p></div>')
@@ -141,7 +137,6 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft()) as demo:
     2. **Record voice** and say "Detect" or "What do you see?"
     3. **OR click** "Detect Now" for instant detection
     4. **Listen** to audio results
-    5. **Click Clear** to reset for next object
     
     💡 **Tips:** Good lighting • Objects 2-6 feet away • Speak clearly
     """)
@@ -152,26 +147,15 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft()) as demo:
             voice = gr.Audio(sources=["microphone"], type="filepath", label="🎤 Voice")
             
             with gr.Row():
-                detect_btn = gr.Button("🔍 Detect Now", variant="primary", scale=2)
-                voice_btn = gr.Button("🎙️ Use Voice", variant="secondary", scale=2)
-                clear_btn = gr.Button("🗑️ Clear", variant="stop", scale=1)
+                detect_btn = gr.Button("🔍 Detect Now", variant="primary")
+                voice_btn = gr.Button("🎙️ Use Voice", variant="secondary")
         
         with gr.Column():
             result_img = gr.Image(type="pil", label="🎯 Results")
             status = gr.Textbox(label="Status", value="Ready!", lines=2)
             audio_out = gr.Audio(type="filepath", label="🔊 Audio", autoplay=True)
     
-    # Event handlers
     detect_btn.click(fn=detect_objects, inputs=webcam, outputs=[result_img, audio_out, status])
     voice_btn.click(fn=process_voice, inputs=[voice, webcam], outputs=[result_img, audio_out, status])
-    clear_btn.click(fn=clear_all, inputs=None, outputs=[result_img, voice, status, audio_out])
-    
-    gr.Markdown("""
-    ---
-    <div style="text-align: center; color: #666; padding: 20px;">
-        <p><strong>⚡ Performance:</strong> 1-2 second response | <strong>🎯 Objects:</strong> 80+ categories</p>
-        <p>YOLOv8m + Whisper + gTTS | MIT License | Made with ❤️ for accessibility</p>
-    </div>
-    """)
 
 demo.launch()
