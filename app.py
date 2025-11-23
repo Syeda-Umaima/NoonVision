@@ -128,8 +128,8 @@ def process_voice(audio_file, image):
         return None, None, f"❌ Error: {str(e)}"
 
 def clear_all():
-    """Clear results but keep audio working"""
-    return None, None, "Ready for next detection!"
+    """Clear only results (image and audio output), keep camera and voice input"""
+    return None, None, "✨ Cleared! Ready for next detection!"
 
 with gr.Blocks(title="NoonVision", theme=gr.themes.Soft()) as demo:
     
@@ -164,7 +164,7 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft()) as demo:
     # Event handlers
     detect_btn.click(fn=detect_objects, inputs=webcam, outputs=[result_img, audio_out, status])
     voice_btn.click(fn=process_voice, inputs=[voice, webcam], outputs=[result_img, audio_out, status])
-    clear_btn.click(fn=clear_all, inputs=None, outputs=[result_img, voice, status])
+    clear_btn.click(fn=clear_all, inputs=None, outputs=[result_img, audio_out, status])
     
     gr.Markdown("""
     ---
