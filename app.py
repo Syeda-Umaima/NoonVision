@@ -206,9 +206,18 @@ def process_input(audio_data, image):
 # ======================
 # GRADIO INTERFACE
 # ======================
-with gr.Blocks(theme=gr.themes.Soft(), title="NoonVision - AI Vision Assistant") as demo:
+# Create interface with proper configuration for Hugging Face Spaces
+with gr.Blocks(
+    theme=gr.themes.Soft(), 
+    title="NoonVision - AI Vision Assistant",
+    css="""
+    .gradio-container {
+        max-width: 900px !important;
+    }
+    """
+) as demo:
     gr.HTML("""
-    <div style="text-align: center;">
+    <div style="text-align: center; margin-bottom: 20px;">
         <h1>🦾 NoonVision - Hands-Free AI Vision Assistant</h1>
         <p>Speak commands like "detect" or "what do you see" to identify objects around you</p>
     </div>
@@ -220,13 +229,15 @@ with gr.Blocks(theme=gr.themes.Soft(), title="NoonVision - AI Vision Assistant")
                 sources="webcam", 
                 label="Live Camera", 
                 streaming=False,
-                height=400
+                height=400,
+                type="pil"
             )
             
         with gr.Column():
             output_image = gr.Image(
                 label="Detected Objects", 
-                height=400
+                height=400,
+                type="pil"
             )
     
     with gr.Row():
@@ -248,7 +259,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="NoonVision - AI Vision Assistant")
     audio_output = gr.Audio(
         label="Audio Description",
         autoplay=True,
-        visible=False
+        type="filepath"
     )
     
     transcription_display = gr.Textbox(
@@ -304,10 +315,11 @@ if __name__ == "__main__":
             except:
                 pass
     
-    # Launch with simplified configuration
+    # Launch with Hugging Face Spaces compatibility
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
         share=False,
-        debug=False
+        debug=False,
+        show_api=False
     )
