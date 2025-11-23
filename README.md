@@ -4,7 +4,7 @@ emoji: 🦾
 colorFrom: green
 colorTo: blue
 sdk: gradio
-sdk_version: 4.48.0
+sdk_version: 4.44.1
 app_file: app.py
 pinned: true
 ---
@@ -45,7 +45,7 @@ pinned: true
 
 - **Models**: YOLOv8m for object detection, Whisper-tiny for speech recognition
 - **Platform**: CPU-only optimization
-- **Framework**: Gradio 4.48.0 for stable web interface
+- **Framework**: Gradio 4.44.1+ for stable web interface
 - **Compatibility**: Fully compatible with Hugging Face Spaces
 
 ## ⚠️ Notes
