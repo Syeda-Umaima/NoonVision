@@ -40,8 +40,7 @@ try:
     stt_pipe = pipeline(
         "automatic-speech-recognition",
         model="openai/whisper-tiny.en",
-        device=device,
-        chunk_length_s=10  # Process in chunks for speed
+        device=device
     )
     print(f"✅ Whisper loaded ({'GPU' if device == 0 else 'CPU'})")
 except Exception as e:
@@ -193,10 +192,7 @@ def check_camera(frame, transcript, last_result):
 # ============================================
 # INTERFACE (CLEAN & FAST)
 # ============================================
-with gr.Blocks(
-    title="NoonVision - Fast AI Vision",
-    theme=gr.themes.Soft(primary_hue="green", secondary_hue="blue")
-) as demo:
+with gr.Blocks(title="NoonVision - Fast AI Vision") as demo:
     
     gr.HTML("""
         <div style="text-align: center; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; margin-bottom: 20px;">
