@@ -65,14 +65,16 @@ TRIGGER_PHRASES = [
 # CORE DETECTION FUNCTION
 # ============================================
 def detect_objects_enhanced(image, conf_threshold=CONF_THRESHOLD):
-    """Enhanced object detection with visualization."""
+    """
+    Enhanced object detection with better error handling and visualization.
+    """
     start_time = time.time()
     
     if image is None:
-        return None, None, None
+        return None, "⚠️ No image provided. Please check your webcam."
     
     if model is None:
-        return None, None, None
+        return None, "❌ Detection model not available."
     
     try:
         # Convert to numpy if needed
@@ -118,23 +120,25 @@ def detect_objects_enhanced(image, conf_threshold=CONF_THRESHOLD):
             draw.rectangle(bbox, fill=BOX_COLOR)
             draw.text((x1, y1 - 25), text, fill="white", font=font)
         
-        # Generate audio
-        audio_file = generate_audio_description(detected_labels)
+        # Generate audio description
+        audio_file = generate_audio_description(detected_labels, confidences)
         
-        return img_pil, audio_file, None
+        return img_pil, audio_file
         
     except Exception as e:
         print(f"❌ Detection error: {str(e)}")
-        return None, None, None
+        return None, None
 
 # ============================================
 # AUDIO GENERATION
 # ============================================
-def generate_audio_description(labels):
-    """Generate natural-sounding audio description."""
+def generate_audio_description(labels, confidences):
+    """
+    Generate natural-sounding audio description of detected objects.
+    """
     try:
         if not labels:
-            tts_text = "I couldn't detect any objects. Please try again with better lighting."
+            tts_text = "I couldn't detect any objects in the image. Please try again with better lighting or move objects closer to the camera."
         else:
             from collections import Counter
             label_counts = Counter(labels)
@@ -146,7 +150,7 @@ def generate_audio_description(labels):
                 else:
                     tts_text = f"I see {count} {obj}s."
             else:
-                tts_text = "I see "
+                tts_text = "I see the following objects: "
                 items = []
                 for obj, count in label_counts.items():
                     if count == 1:
@@ -159,7 +163,7 @@ def generate_audio_description(labels):
                 else:
                     tts_text += ", ".join(items[:-1]) + f", and {items[-1]}."
         
-        # Generate audio with unique filename
+        # Generate audio
         timestamp = int(time.time() * 1000)
         audio_file = f"detected_{timestamp}.mp3"
         tts = gTTS(text=tts_text, lang='en', slow=False)
@@ -174,16 +178,24 @@ def generate_audio_description(labels):
 # STREAMING VOICE HANDLER
 # ============================================
 def process_streaming_voice(audio_tuple, image_input):
-    """Process continuously streaming audio for always-listening mode."""
+    """
+    Process continuously streaming audio input for always-listening mode.
+    Automatically captures image and runs detection when trigger phrase is heard.
+    """
+    # Return empty outputs while listening (no visual feedback needed)
+    if audio_tuple is None:
+        return None, None
     
-    # Return empty if no audio or no models loaded
-    if audio_tuple is None or stt_pipe is None or image_input is None:
-        return image_input, None, None
+    if stt_pipe is None:
+        return None, None
+    
+    if image_input is None:
+        return None, None
     
     try:
         sample_rate, audio_data = audio_tuple
         
-        # Convert audio data to proper format
+        # Convert audio data to format expected by pipeline
         if len(audio_data.shape) > 1:
             audio_data = audio_data.mean(axis=1)
         
@@ -196,135 +208,128 @@ def process_streaming_voice(audio_tuple, image_input):
         result = stt_pipe({"sampling_rate": sample_rate, "raw": audio_data})
         transcribed_text = result["text"].strip().lower()
         
-        # Only process if there's actual speech (more than 2 characters)
+        # Only process if there's actual speech
         if len(transcribed_text) < 2:
-            return image_input, None, None
+            return None, None
         
         # Check for trigger phrase
         is_triggered = any(phrase in transcribed_text for phrase in TRIGGER_PHRASES)
         
         if is_triggered:
-            # Run detection
-            annotated_img, audio, _ = detect_objects_enhanced(image_input, CONF_THRESHOLD)
+            print(f"🎯 Trigger detected: '{transcribed_text}'")
             
-            if annotated_img is not None and audio is not None:
-                return image_input, annotated_img, audio
-        
-        # Continue listening silently
-        return image_input, None, None
+            # Run detection immediately
+            annotated_img, audio_output = detect_objects_enhanced(image_input, CONF_THRESHOLD)
+            
+            # Return results - audio will autoplay
+            return annotated_img, audio_output
+        else:
+            # Continue listening silently
+            return None, None
             
     except Exception as e:
-        # Silent error handling - just continue listening
-        return image_input, None, None
+        # Silently continue listening on errors (background noise, etc.)
+        return None, None
 
 # ============================================
 # GRADIO INTERFACE - MINIMAL DESIGN
 # ============================================
 with gr.Blocks(
-    title="NoonVision - AI Vision Assistant",
+    title="NoonVision - Voice-Activated AI Vision",
     theme=gr.themes.Soft(primary_hue="blue", secondary_hue="green"),
     css="""
-        .main-header {
-            text-align: center; 
-            padding: 20px; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-            color: white; 
-            border-radius: 10px; 
-            margin-bottom: 20px;
-        }
-        .instruction-box {
-            background: #f0f8ff; 
-            padding: 20px; 
-            border-radius: 8px; 
-            border-left: 4px solid #667eea;
-            margin-bottom: 20px;
-        }
+        .gradio-container {max-width: 1200px !important; margin: auto;}
+        .main-header {text-align: center; padding: 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                      color: white; border-radius: 15px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
+        .main-header h1 {margin: 0; font-size: 2.5em; font-weight: bold;}
+        .main-header p {margin: 10px 0 0 0; font-size: 1.2em; opacity: 0.95;}
+        .hidden-audio {display: none;}
+        .image-container {border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);}
     """
 ) as demo:
     
     # Header
     gr.HTML("""
         <div class="main-header">
-            <h1>🦾 NoonVision - AI Vision Assistant</h1>
-            <p>Hands-Free Voice-Activated Object Detection</p>
+            <h1>🦾 NoonVision</h1>
+            <p>🎤 Voice-Activated AI Vision Assistant</p>
+            <p style="font-size: 0.9em; margin-top: 15px;">
+                👋 Just say <strong>"Detect"</strong> and I'll tell you what I see
+            </p>
         </div>
     """)
     
-    # Instructions
-    gr.Markdown("""
-    <div class="instruction-box">
-    <h3>🎤 Voice-Activated Mode</h3>
-    <p>When you open this app, it will request <strong>microphone and camera permissions</strong>.</p>
-    <p>Once granted, the app will <strong>automatically start listening</strong> for your voice commands.</p>
-    
-    <h4>📢 How to Use:</h4>
-    <ol>
-        <li><strong>Allow permissions</strong> when prompted</li>
-        <li><strong>Simply say:</strong> "Detect" or "What do you see?"</li>
-        <li><strong>Listen</strong> to the audio description of detected objects</li>
-        <li><strong>Repeat</strong> anytime - no buttons to click!</li>
-    </ol>
-    
-    <p><strong>💡 Tips:</strong></p>
-    <ul>
-        <li>Position objects 2-6 feet from camera</li>
-        <li>Ensure good lighting for best detection</li>
-        <li>Speak clearly: "Detect", "What's in front of me?", "Identify objects"</li>
-    </ul>
-    </div>
-    """)
-    
-    # Main Interface - Just Camera and Results
+    # Main content - only camera feed and results
     with gr.Row():
         with gr.Column(scale=1):
+            gr.Markdown("### 📷 Live Camera")
             image_input = gr.Image(
                 type="pil",
-                sources=["webcam"],  # Changed from 'source' to 'sources'
+                source="webcam",
                 streaming=True,
-                label="📷 Live Camera Feed",
-                height=500
+                label="",
+                height=450,
+                elem_classes="image-container"
             )
         
         with gr.Column(scale=1):
+            gr.Markdown("### 🎯 Detection Results")
             image_output = gr.Image(
                 type="pil",
-                label="🎯 Detection Results",
-                height=500
+                label="",
+                height=450,
+                elem_classes="image-container"
             )
     
-    # Hidden components for voice and audio (no UI elements shown)
+    # Hidden audio component for voice input (streaming, always on)
     voice_input = gr.Audio(
         sources=["microphone"],
         type="numpy",
         streaming=True,
-        visible=False  # Hidden - auto-starts on load
+        label="",
+        elem_classes="hidden-audio",
+        autoplay=False,
+        visible=False
     )
     
+    # Hidden audio output component (autoplay enabled)
     audio_output = gr.Audio(
         type="filepath",
         autoplay=True,
-        visible=False  # Hidden - plays automatically
+        label="",
+        elem_classes="hidden-audio",
+        visible=False
     )
     
-    # Event Handler - Streaming voice processing
+    # Instructions
+    gr.Markdown("""
+    ---
+    ### 📖 How It Works:
+    1. **🎤 Grant microphone permission** when prompted (one-time only)
+    2. **📷 Position yourself** in front of the camera
+    3. **🗣️ Say "Detect"** (or "What do you see?", "Scan", etc.)
+    4. **🔊 Listen** to the automatic audio description
+    5. **🔄 Repeat** anytime - no clicking needed!
+    
+    💡 **Tip:** Works best with good lighting and objects 2-6 feet from camera
+    
+    ---
+    <div style="text-align: center; color: #666; padding: 20px;">
+        <p>Made with ❤️ for accessibility | Powered by YOLOv8 + Whisper + Gradio</p>
+        <p>🌟 Helping the visually impaired navigate their world independently</p>
+    </div>
+    """)
+    
+    # Event Handler - STREAMING MODE (silent, always listening)
     voice_input.stream(
         fn=process_streaming_voice,
         inputs=[voice_input, image_input],
-        outputs=[image_input, image_output, audio_output],
+        outputs=[image_output, audio_output],
         show_progress=False
     )
-    
-    # Footer
-    gr.Markdown("""
-    ---
-    <div style="text-align: center; color: #666; padding: 20px;">
-        <p><strong>🎙️ Always Listening</strong> | <strong>🔊 Auto-Play Results</strong> | <strong>♿ Fully Accessible</strong></p>
-        <p>Powered by YOLOv8 + Whisper + Gradio | Made with ❤️ for accessibility</p>
-    </div>
-    """)
 
 # ============================================
-# LAUNCH WITH AUTO-PERMISSION REQUEST
+# LAUNCH
 # ============================================
 if __name__ == "__main__":
     demo.launch(
