@@ -4,89 +4,90 @@ emoji: 🦾
 colorFrom: green
 colorTo: blue
 sdk: gradio
-sdk_version: "6.0.0"
+sdk_version: 4.44.1
 app_file: app.py
 pinned: true
 ---
+
 # 🦾 NoonVision – CPU Hands-Free AI Vision Assistant
+
 **CPU-compatible Hands-Free Object Detection and Audio Feedback**
----
+
 ## ✨ Features
+
 - Real-time object detection using **YOLOv8m** (CPU)
 - Automatic speech recognition using **Whisper-tiny** (CPU)
-- Hands-free trigger phrase detection: "detect", "what do you see", etc.
+- Hands-free trigger phrase detection
 - Audio output describing detected objects using **gTTS**
-- Compatible with **Gradio v6+**, fully CPU-only
----
-## 💻 Installation
-1. Clone the repository:
-```bash
-git clone https://github.com/YOUR_USERNAME/noonvision.git
-cd noonvision
+- Compatible with **Gradio v4.44.1+**, fully CPU-only
+- Optimized for Hugging Face Spaces deployment
 
-Create a virtual environment:
+## 🎯 Trigger Phrases
 
-Bashpython -m venv venv
+- "detect"
+- "what do you see"
+- "what's in front of me"
+- "what is in front of me"
+- "identify objects"
+- "what's this"
+- "what is this"
+- "tell me what you see"
+- "scan"
+- "look"
 
-Activate it:
+## 🚀 Usage
 
-Bash# Windows
-venv\Scripts\activate
-# Linux/macOS
-source venv/bin/activate
+1. **Allow permissions** - Click "Allow" when prompted for camera and microphone access
+2. **Speak a command** - Clearly say one of the trigger phrases
+3. **View results** - See detected objects with bounding boxes
+4. **Listen** - Hear the audio description of what was detected
 
-Install dependencies:
+## 🔧 Technical Details
 
-Bashpip install --upgrade pip
-pip install -r requirements.txt
+- **Models**: YOLOv8m for object detection, Whisper-tiny for speech recognition
+- **Platform**: CPU-only optimization
+- **Framework**: Gradio 4.44.1+ for web interface
+- **Compatibility**: Fully compatible with Hugging Face Spaces
 
-Download YOLOv8m weights if not auto-downloaded:
-
-Bashwget https://github.com/ultralytics/assets/releases/download/v0.0/yolov8m.pt
-🚀 Running the App
-Bashpython app.py
-Open the link shown in the terminal (usually http://127.0.0.1:7860) in your browser.
-Allow microphone and camera permissions. Speak one of the trigger phrases to start detection and hear results automatically.
-🎤 Trigger Phrases
-
-"detect"
-"what do you see"
-"what's in front of me"
-"what is in front of me"
-"identify objects"
-"what's this"
-"what is this"
-"tell me what you see"
-"scan"
-"look"
-
-📁 File Structure
-textnoonvision/
+## 📁 Project Structure
+noonvision/
 │
-├─ app.py                 # Main application (CPU-compatible)
-├─ requirements.txt       # Python dependencies
-├─ README.md              # Documentation
-├─ yolov8m.pt             # YOLOv8m model (auto-download)
-└─ .gitattributes         # For model weights management with Git LFS
-⚠️ Notes
+├── app.py # Main application
+├── requirements.txt # Python dependencies
+├── README.md # Documentation
+└── .gitattributes # Git LFS configuration
 
-Runs entirely on CPU, so detection may be slower than GPU.
-First-time model downloads may take a few minutes.
-Ensure microphone and webcam are allowed in the browser.
-Gradio v6+ fixes previous theme argument errors.
+text
 
-🛠 Troubleshooting
+## ⚠️ Notes
 
-Gradio theme error: Ensure Gradio 6+ and remove theme= argument from gr.Blocks().
-Transformers missing: Install transformers>=4.35.0.
-Slow CPU detection: Reduce IMG_SIZE in app.py.
+- First-time model downloads may take 1-2 minutes
+- Detection runs on CPU, so allow 2-3 seconds for processing
+- Ensure microphone and webcam permissions are granted
+- Audio descriptions are generated using Google TTS
 
-📜 License
-MIT License – Free for personal and academic use.
-🙏 Acknowledgments
+## 🛠 Troubleshooting
+
+**Microphone not working:**
+- Check browser permissions
+- Ensure no other apps are using the microphone
+
+**Camera not working:**
+- Allow camera permissions
+- Check if camera is being used by another application
+
+**Slow detection:**
+- This is normal on CPU - processing takes 2-3 seconds
+
+## 📜 License
+
+MIT License - Free for personal and academic use.
+
+## 🙏 Acknowledgments
+
 Built with:
-
-Ultralytics YOLOv8 – Object detection
-OpenAI Whisper – Speech recognition
-Google gTTS – Text-to-speech
-Gradio – Web interface
+- **Ultralytics YOLOv8** - Object detection
+- **OpenAI Whisper** - Speech recognition  
+- **Google gTTS** - Text-to-speech
+- **Gradio** - Web interface
+- **Hugging Face** - Deployment platform
