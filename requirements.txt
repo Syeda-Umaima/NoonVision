@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-ultralytics
-pillow
-python-multipart
+gradio==4.44.0
+ultralytics==8.1.0
+Pillow
 numpy
+gTTS
+soundfile

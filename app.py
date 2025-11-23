@@ -1,170 +1,118 @@
-# app.py
-# FastAPI backend — CPU-optimized, multi-mode YOLO selection
-
-import io
-import time
-import base64
-from typing import Tuple, List, Dict
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import gradio as gr
+from ultralytics import YOLO
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
-import torch
-from ultralytics import YOLO
+from gtts import gTTS
+import soundfile as sf
+import io
+import tempfile
 
-app = FastAPI()
+# ---------------------------
+# Load YOLOv8m model (CPU)
+# ---------------------------
+model = YOLO("yolov8m.pt")   # your medium model
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# -----------------------------------
+# Function: Detect objects in image
+# -----------------------------------
+def detect_objects(image):
+    results = model(image)
 
-# -------------------------
-# CONFIG: Choose MODE HERE
-# Options: "ultrafast", "balanced", "accurate"
-# "ultrafast" -> yolov8n.pt (best for speed on CPU)
-# "balanced"  -> yolov8s.pt
-# "accurate"  -> yolov8m.pt
-# If you have yolo11n or other small models you may set paths accordingly
-# -------------------------
-MODEL_MODE = "ultrafast"   # change to "balanced" or "accurate" as needed
+    boxes = results[0].boxes.xyxy.cpu().numpy()
+    labels = results[0].names
+    confidences = results[0].boxes.conf.cpu().numpy()
 
-# Map modes to model filenames and image sizes
-MODEL_MAP = {
-    "ultrafast": {"path": "yolov8n.pt", "img_size": 416},
-    "balanced":  {"path": "yolov8s.pt", "img_size": 640},
-    "accurate":  {"path": "yolov8m.pt", "img_size": 640},
-}
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
+    detected_objects = []
 
-if MODEL_MODE not in MODEL_MAP:
-    MODEL_MODE = "ultrafast"
+    for i, box in enumerate(boxes):
+        x1, y1, x2, y2 = box
+        cls_id = int(results[0].boxes.cls[i])
+        label = labels[cls_id]
+        conf = confidences[i]
 
-MODEL_PATH = MODEL_MAP[MODEL_MODE]["path"]
-IMG_SIZE = MODEL_MAP[MODEL_MODE]["img_size"]
+        detected_objects.append(f"{label} ({conf:.2f})")
 
-# Confidence threshold (can tune)
-CONF_THRESHOLD = 0.25
+        # Draw bounding boxes
+        draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+        draw.text((x1, y1 - 10), f"{label} {conf:.2f}", fill="red", font=font)
 
-# Load model (CPU)
-print(f"Loading model {MODEL_PATH} on CPU (mode={MODEL_MODE}) ...")
-try:
-    model = YOLO(MODEL_PATH)
-    # Force CPU (explicit)
-    model.to("cpu")
-    # Some speed improvements for CPU:
+    # Prepare description text
+    if detected_objects:
+        text_description = "Detected objects: " + ", ".join(detected_objects)
+        speech_text = "Detected objects are " + ", ".join([obj.split("(")[0] for obj in detected_objects])
+    else:
+        text_description = "No objects detected."
+        speech_text = "No objects detected."
+
+    # Convert speech to audio automatically
+    tts = gTTS(speech_text)
+    temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    tts.save(temp_audio.name)
+
+    data, samplerate = sf.read(temp_audio.name)
+    audio_bytes = io.BytesIO()
+    sf.write(audio_bytes, data, samplerate, format='wav')
+
+    return image, text_description, audio_bytes.getvalue()
+
+
+# ---------------------------------------------------
+# Voice command system
+# Detect when user says “detect” → capture image auto
+# ---------------------------------------------------
+def voice_controller(audio, image):
+    import speech_recognition as sr
+    recog = sr.Recognizer()
+
+    if audio is None:
+        return gr.update(), gr.update(), None
+
+    # Convert to speech Recognizer-friendly file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+        f.write(audio)
+        audio_file_path = f.name
+
+    with sr.AudioFile(audio_file_path) as source:
+        audio_data = recog.record(source)
+
     try:
-        model.fuse()  # fuse conv+bce where possible
-    except Exception:
-        pass
-    # Warm up with a small dummy
-    dummy = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
-    _ = model(dummy, imgsz=IMG_SIZE, verbose=False)
-    print("Model loaded and warmed up.")
-except Exception as e:
-    print("Failed to load model:", e)
-    model = None
+        text = recog.recognize_google(audio_data).lower()
+    except:
+        return image, "Could not understand voice. Try again.", None
 
-# Input model for POST
-class ImageData(BaseModel):
-    image_base64: str
+    # If user says "detect", perform detection automatically
+    if "detect" in text:
+        if image is None:
+            return image, "Say 'detect' after camera captures image.", None
+        return detect_objects(image)
 
-# Utility: resize while keeping aspect ratio and pad
-def preprocess_pil_image(pil_img: Image.Image, target_size: int) -> Tuple[np.ndarray, Image.Image]:
-    # Convert to RGB and resize (letterbox)
-    img = pil_img.convert("RGB")
-    w, h = img.size
-    scale = target_size / max(w, h)
-    new_w, new_h = int(w * scale), int(h * scale)
-    resized = img.resize((new_w, new_h), Image.LANCZOS)
-    # create padded canvas
-    canvas = Image.new("RGB", (target_size, target_size), (114, 114, 114))
-    paste_x = (target_size - new_w) // 2
-    paste_y = (target_size - new_h) // 2
-    canvas.paste(resized, (paste_x, paste_y))
-    return np.array(canvas), canvas
+    return image, "Say 'detect' to perform analysis.", None
 
-def format_detections(results, orig_size: Tuple[int, int], pad_info: Tuple[int,int,int,int], conf_threshold=CONF_THRESHOLD):
-    # results: Ultralytics results object (boxes)
-    # pad_info: (paste_x, paste_y, new_w, new_h) used if needed — in this simplified version we return coarse boxes
-    detections = []
-    if results is None:
-        return detections
-    try:
-        boxes = results.boxes.xyxy.cpu().numpy()
-        confs = results.boxes.conf.cpu().numpy()
-        cls_ids = results.boxes.cls.cpu().numpy().astype(int)
-        names = results.names
-        for i, box in enumerate(boxes):
-            conf = float(confs[i])
-            if conf < conf_threshold:
-                continue
-            cls = int(cls_ids[i])
-            label = names[cls]
-            x1, y1, x2, y2 = map(float, box.tolist())
-            detections.append({
-                "label": label,
-                "confidence": round(conf, 2),
-                "box": [round(x1,2), round(y1,2), round(x2,2), round(y2,2)]
-            })
-    except Exception:
-        pass
-    return detections
 
-@app.post("/detect")
-async def detect_endpoint(data: ImageData):
-    start = time.time()
-    if model is None:
-        return {"error": "Model not loaded", "detections": [], "speech_text": "Model not available."}
-    try:
-        # decode base64
-        header, b64 = data.image_base64.split(",", 1) if "," in data.image_base64 else ("", data.image_base64)
-        img_bytes = base64.b64decode(b64)
-        pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        orig_w, orig_h = pil_img.size
+# ---------------------------
+# Gradio User Interface
+# ---------------------------
+with gr.Blocks(title="NoonVision – Voice Enabled AI") as demo:
 
-        # preprocess (letterbox)
-        in_np, canvas = preprocess_pil_image(pil_img, IMG_SIZE)
+    gr.Markdown(
+        "<h1 style='text-align:center;'>NoonVision – AI Object Detection for the Visually Impaired</h1>"
+        "<p style='font-size:22px; text-align:center;'>Say <b>Detect</b> to capture & analyze automatically.</p>"
+    )
 
-        # inference (CPU) — minimal overhead
-        # Use model.predict to specify imgsz and device explicitly
-        results = model.predict(source=in_np, imgsz=IMG_SIZE, device="cpu", conf=CONF_THRESHOLD, verbose=False)[0]
+    with gr.Row():
+        webcam = gr.Image(source="webcam", type="pil", label="Camera View")
+        audio_in = gr.Audio(sources=["microphone"], type="filepath", label="Say: Detect")
 
-        detections = format_detections(results, (orig_w, orig_h), (0,0,0,0), conf_threshold=CONF_THRESHOLD)
+    output_img = gr.Image(label="Detection Result")
+    output_text = gr.Textbox(label="Detected Objects (Accuracy Shown Here)")
+    output_audio = gr.Audio(label="Voice Output", autoplay=True)
 
-        # Build speech_text with counts (short and clean)
-        if len(detections) == 0:
-            speech_text = "No objects detected."
-        else:
-            # count labels
-            labels = [d["label"] for d in detections]
-            from collections import Counter
-            cnt = Counter(labels)
-            parts = []
-            for k,v in cnt.items():
-                if v == 1:
-                    parts.append(f"one {k}")
-                else:
-                    parts.append(f"{v} {k}s")
-            # keep description short
-            if len(parts) == 1:
-                speech_text = f"I see {parts[0]}."
-            elif len(parts) == 2:
-                speech_text = f"I see {parts[0]} and {parts[1]}."
-            else:
-                speech_text = "I see " + ", ".join(parts[:-1]) + ", and " + parts[-1] + "."
+    audio_in.change(
+        fn=voice_controller,
+        inputs=[audio_in, webcam],
+        outputs=[output_img, output_text, output_audio]
+    )
 
-        elapsed = time.time() - start
-        return {
-            "detections": detections,
-            "speech_text": speech_text,
-            "mode": MODEL_MODE,
-            "elapsed": round(elapsed, 3),
-            "img_size": IMG_SIZE
-        }
-
-    except Exception as e:
-        return {"error": str(e), "detections": [], "speech_text": "Error during detection."}
+demo.launch()
