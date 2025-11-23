@@ -8,12 +8,13 @@ from transformers import pipeline
 from collections import Counter
 import torch
 import os
+import tempfile
 
 # ======================
 # CONFIGURATION
 # ======================
 CONF_THRESHOLD = 0.25
-IMG_SIZE = 640  # smaller size for faster CPU inference
+IMG_SIZE = 640
 BOX_COLOR = (255, 50, 50)
 BOX_WIDTH = 3
 FONT_SIZE = 18
@@ -23,11 +24,6 @@ FONT_SIZE = 18
 # ======================
 print("🔄 Loading YOLOv8m (CPU)...")
 try:
-    # Download model if not exists
-    if not os.path.exists("yolov8m.pt"):
-        print("📥 Downloading YOLOv8m model...")
-        YOLO("yolov8m.pt")
-    
     model = YOLO("yolov8m.pt")
     # Warmup run
     dummy = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
@@ -39,12 +35,11 @@ except Exception as e:
 
 # Whisper STT (CPU)
 print("🔄 Loading Whisper STT (CPU)...")
-device = -1  # CPU
 try:
     stt_pipe = pipeline(
         "automatic-speech-recognition", 
         model="openai/whisper-tiny.en", 
-        device=device
+        device=-1  # CPU
     )
     print("✅ Whisper STT loaded on CPU")
 except Exception as e:
@@ -81,8 +76,9 @@ def generate_audio_description(labels):
             else:
                 tts_text = "I see " + ", ".join(items[:-1]) + f" and {items[-1]}."
 
+        # Create temporary file
         timestamp = int(time.time() * 1000)
-        audio_file = f"detected_{timestamp}.mp3"
+        audio_file = f"/tmp/detected_{timestamp}.mp3"
         tts = gTTS(text=tts_text, lang='en', slow=False)
         tts.save(audio_file)
         return audio_file
@@ -93,19 +89,19 @@ def generate_audio_description(labels):
 # ======================
 # OBJECT DETECTION
 # ======================
-def detect_objects(image, conf_threshold=CONF_THRESHOLD):
+def detect_objects(image):
     if image is None or model is None:
-        return None, None
+        return None, "No image provided or model not loaded"
 
     try:
         img_np = np.array(image)
         img_pil = image.copy()
-        results = model(img_np, imgsz=IMG_SIZE, conf=conf_threshold, verbose=False)[0]
+        results = model(img_np, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)[0]
 
         # Check if any detections
         if results.boxes is None or len(results.boxes) == 0:
             audio_file = generate_audio_description([])
-            return image, audio_file
+            return image, "No objects detected", audio_file
 
         boxes = results.boxes.xyxy.cpu().numpy()
         labels = results.names
@@ -126,7 +122,7 @@ def detect_objects(image, conf_threshold=CONF_THRESHOLD):
             label = labels[cls_id]
             conf = confidences[i]
             
-            if conf >= conf_threshold:
+            if conf >= CONF_THRESHOLD:
                 detected_labels.append(label)
                 # Draw bounding box
                 draw.rectangle([x1, y1, x2, y2], outline=BOX_COLOR, width=BOX_WIDTH)
@@ -137,32 +133,36 @@ def detect_objects(image, conf_threshold=CONF_THRESHOLD):
                 draw.text((x1, y1 - 20), text, fill="white", font=font)
 
         audio_file = generate_audio_description(detected_labels)
-        return img_pil, audio_file
+        object_count = len(detected_labels)
+        status_msg = f"Detected {object_count} object(s): {', '.join(detected_labels)}"
+        
+        return img_pil, status_msg, audio_file
         
     except Exception as e:
         print(f"❌ Detection error: {e}")
-        return None, None
+        return None, f"Detection error: {str(e)}", None
 
 # ======================
 # SPEECH RECOGNITION
 # ======================
-def transcribe_streaming_audio(audio_tuple):
-    if audio_tuple is None or stt_pipe is None:
+def transcribe_audio(audio_data):
+    if audio_data is None or stt_pipe is None:
         return ""
+    
     try:
-        sample_rate, audio_data = audio_tuple
+        sample_rate, audio_array = audio_data
         
         # Handle stereo audio by converting to mono
-        if len(audio_data.shape) > 1:
-            audio_data = audio_data.mean(axis=1)
+        if len(audio_array.shape) > 1:
+            audio_array = audio_array.mean(axis=1)
         
         # Normalize audio data
-        audio_data = audio_data.astype(np.float32)
-        if audio_data.max() > 1.0:
-            audio_data = audio_data / 32768.0
+        audio_array = audio_array.astype(np.float32)
+        if audio_array.max() > 1.0:
+            audio_array = audio_array / 32768.0
         
         # Transcribe
-        result = stt_pipe({"sampling_rate": sample_rate, "raw": audio_data})
+        result = stt_pipe({"sampling_rate": sample_rate, "raw": audio_array})
         text = result["text"].strip().lower()
         print(f"🎤 Transcribed: {text}")
         return text
@@ -172,29 +172,41 @@ def transcribe_streaming_audio(audio_tuple):
         return ""
 
 # ======================
-# MAIN PROCESSING
+# MAIN PROCESSING FUNCTION
 # ======================
-def process_camera(latest_frame, transcribed_text, last_image):
-    if latest_frame is None:
-        return latest_frame, last_image, None, "🔄 Waiting for camera...", ""
+def process_input(audio_data, image):
+    """
+    Main function that processes both audio and image inputs
+    """
+    if image is None:
+        return None, "Please enable your camera first", None, ""
     
-    current_text = transcribed_text or ""
-    triggered = any(phrase in current_text for phrase in TRIGGER_PHRASES)
+    transcribed_text = ""
+    if audio_data is not None:
+        transcribed_text = transcribe_audio(audio_data)
+    
+    # Check if trigger phrase was spoken
+    triggered = any(phrase in transcribed_text for phrase in TRIGGER_PHRASES)
     
     if triggered:
-        print(f"🚨 Trigger detected: {current_text}")
-        annotated_img, audio_file = detect_objects(latest_frame, CONF_THRESHOLD)
+        print(f"🚨 Trigger detected: {transcribed_text}")
+        annotated_img, status_msg, audio_file = detect_objects(image)
         if annotated_img is not None:
-            return latest_frame, annotated_img, audio_file, "✅ Objects detected! Listen to the audio description.", ""
+            return annotated_img, status_msg, audio_file, transcribed_text
         else:
-            return latest_frame, last_image, None, "❌ Detection failed. Please try again.", ""
-    
-    return latest_frame, last_image, None, "🎤 Listening... Say 'detect' or 'what do you see?'", ""
+            return image, "Detection failed. Please try again.", None, transcribed_text
+    else:
+        if transcribed_text:
+            status_msg = f"Heard: '{transcribed_text}'. Say 'detect' or 'what do you see?' to identify objects."
+        else:
+            status_msg = "🎤 Speak a command like 'detect' or 'what do you see?'"
+        
+        return image, status_msg, None, transcribed_text
 
 # ======================
 # GRADIO INTERFACE
 # ======================
-with gr.Blocks(theme=gr.themes.Soft()) as demo:
+with gr.Blocks(theme=gr.themes.Soft(), title="NoonVision - AI Vision Assistant") as demo:
     gr.HTML("""
     <div style="text-align: center;">
         <h1>🦾 NoonVision - Hands-Free AI Vision Assistant</h1>
@@ -204,44 +216,45 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     
     with gr.Row():
         with gr.Column():
-            image_input = gr.Image(
-                type="pil", 
+            webcam = gr.Image(
                 sources="webcam", 
-                streaming=True, 
-                interactive=False, 
-                height=400,
-                label="Live Camera Feed"
+                label="Live Camera", 
+                streaming=False,
+                height=400
             )
-            gr.HTML("<p style='text-align: center; color: #666;'>Camera feed - allow camera permissions</p>")
-        
+            
         with gr.Column():
-            image_output = gr.Image(
-                type="pil", 
-                height=400,
-                label="Detected Objects"
+            output_image = gr.Image(
+                label="Detected Objects", 
+                height=400
             )
-            gr.HTML("<p style='text-align: center; color: #666;'>Objects will appear here when detected</p>")
     
-    status_output = gr.Textbox(
-        label="Status",
-        value="🎤 Allow microphone permissions and speak a trigger phrase...",
-        lines=2,
-        max_lines=2
-    )
+    with gr.Row():
+        microphone = gr.Audio(
+            sources="microphone", 
+            type="numpy",
+            label="Speak Commands",
+            show_download_button=False
+        )
     
-    # Hidden components for state management
-    voice_input = gr.Audio(
-        sources="microphone", 
-        type="numpy", 
-        streaming=True, 
+    with gr.Row():
+        status_display = gr.Textbox(
+            label="Status",
+            value="🎤 Allow microphone permissions and speak a trigger phrase...",
+            lines=2,
+            interactive=False
+        )
+    
+    audio_output = gr.Audio(
+        label="Audio Description",
+        autoplay=True,
         visible=False
     )
-    transcribed_state = gr.Textbox(visible=False)
-    audio_output = gr.Audio(
-        type="filepath", 
-        autoplay=True, 
-        visible=False,
-        label="Audio Description"
+    
+    transcription_display = gr.Textbox(
+        label="What I heard",
+        interactive=False,
+        visible=True
     )
     
     # Instructions
@@ -263,27 +276,20 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     
     # Trigger phrases display
     with gr.Accordion("🎯 Available Commands", open=False):
-        gr.Markdown("\n".join([f"- '{phrase}'" for phrase in TRIGGER_PHRASES]))
+        gr.Markdown("\n".join([f"- **'{phrase}'**" for phrase in TRIGGER_PHRASES]))
     
-    # ======================
-    # EVENT HANDLERS
-    # ======================
-    
-    # Voice transcription
-    voice_input.stream(
-        fn=transcribe_streaming_audio,
-        inputs=[voice_input],
-        outputs=[transcribed_state],
-        show_progress="hidden"
+    # Process when audio is provided
+    microphone.stop_recording(
+        fn=process_input,
+        inputs=[microphone, webcam],
+        outputs=[output_image, status_display, audio_output, transcription_display]
     )
     
-    # Camera processing
-    image_input.stream(
-        fn=process_camera,
-        inputs=[image_input, transcribed_state, image_output],
-        outputs=[image_input, image_output, audio_output, status_output, transcribed_state],
-        every=0.5,  # Process every 500ms to reduce CPU load
-        show_progress="hidden"
+    # Also process when image updates (for manual trigger)
+    webcam.change(
+        fn=lambda img: (img, "Camera active. Speak a command!", None, ""),
+        inputs=[webcam],
+        outputs=[output_image, status_display, audio_output, transcription_display]
     )
 
 # ======================
@@ -291,29 +297,18 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 # ======================
 if __name__ == "__main__":
     # Clean up any old audio files
-    for file in os.listdir("."):
+    for file in os.listdir("/tmp"):
         if file.startswith("detected_") and file.endswith(".mp3"):
             try:
-                os.remove(file)
+                os.remove(os.path.join("/tmp", file))
             except:
                 pass
     
-    # Launch with Hugging Face Spaces compatibility
-    if os.getenv('SPACE_ID'):
-        print("🚀 Launching on Hugging Face Spaces...")
-        demo.launch(
-            server_name="0.0.0.0",
-            server_port=7860,
-            share=False,
-            debug=False,
-            show_error=True
-        )
-    else:
-        print("🚀 Launching locally...")
-        demo.launch(
-            server_name="0.0.0.0", 
-            server_port=7860,
-            share=True,  # Create public link
-            debug=False,
-            show_error=True
-        )
+    # Launch with simplified configuration
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=False,
+        debug=False,
+        show_error=True
+    )
