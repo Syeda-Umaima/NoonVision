@@ -8,7 +8,6 @@ from transformers import pipeline
 from collections import Counter
 import torch
 import os
-import tempfile
 
 # ======================
 # CONFIGURATION
@@ -25,7 +24,6 @@ FONT_SIZE = 18
 print("🔄 Loading YOLOv8m (CPU)...")
 try:
     model = YOLO("yolov8m.pt")
-    # Warmup run
     dummy = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
     _ = model(dummy, verbose=False)
     print("✅ YOLOv8m loaded successfully on CPU")
@@ -33,13 +31,12 @@ except Exception as e:
     print(f"❌ YOLOv8m failed to load: {e}")
     model = None
 
-# Whisper STT (CPU)
 print("🔄 Loading Whisper STT (CPU)...")
 try:
     stt_pipe = pipeline(
         "automatic-speech-recognition", 
         model="openai/whisper-tiny.en", 
-        device=-1  # CPU
+        device=-1
     )
     print("✅ Whisper STT loaded on CPU")
 except Exception as e:
@@ -76,7 +73,6 @@ def generate_audio_description(labels):
             else:
                 tts_text = "I see " + ", ".join(items[:-1]) + f" and {items[-1]}."
 
-        # Create temporary file
         timestamp = int(time.time() * 1000)
         audio_file = f"/tmp/detected_{timestamp}.mp3"
         tts = gTTS(text=tts_text, lang='en', slow=False)
@@ -91,14 +87,13 @@ def generate_audio_description(labels):
 # ======================
 def detect_objects(image):
     if image is None or model is None:
-        return None, "No image provided or model not loaded"
+        return None, "No image provided or model not loaded", None
 
     try:
         img_np = np.array(image)
         img_pil = image.copy()
         results = model(img_np, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)[0]
 
-        # Check if any detections
         if results.boxes is None or len(results.boxes) == 0:
             audio_file = generate_audio_description([])
             return image, "No objects detected", audio_file
@@ -124,9 +119,7 @@ def detect_objects(image):
             
             if conf >= CONF_THRESHOLD:
                 detected_labels.append(label)
-                # Draw bounding box
                 draw.rectangle([x1, y1, x2, y2], outline=BOX_COLOR, width=BOX_WIDTH)
-                # Draw label
                 text = f"{label} {conf:.2f}"
                 bbox = draw.textbbox((x1, y1 - 20), text, font=font)
                 draw.rectangle(bbox, fill=BOX_COLOR)
@@ -152,16 +145,13 @@ def transcribe_audio(audio_data):
     try:
         sample_rate, audio_array = audio_data
         
-        # Handle stereo audio by converting to mono
         if len(audio_array.shape) > 1:
             audio_array = audio_array.mean(axis=1)
         
-        # Normalize audio data
         audio_array = audio_array.astype(np.float32)
         if audio_array.max() > 1.0:
             audio_array = audio_array / 32768.0
         
-        # Transcribe
         result = stt_pipe({"sampling_rate": sample_rate, "raw": audio_array})
         text = result["text"].strip().lower()
         print(f"🎤 Transcribed: {text}")
@@ -175,9 +165,6 @@ def transcribe_audio(audio_data):
 # MAIN PROCESSING FUNCTION
 # ======================
 def process_input(audio_data, image):
-    """
-    Main function that processes both audio and image inputs
-    """
     if image is None:
         return None, "Please enable your camera first", None, ""
     
@@ -185,7 +172,6 @@ def process_input(audio_data, image):
     if audio_data is not None:
         transcribed_text = transcribe_audio(audio_data)
     
-    # Check if trigger phrase was spoken
     triggered = any(phrase in transcribed_text for phrase in TRIGGER_PHRASES)
     
     if triggered:
@@ -206,16 +192,7 @@ def process_input(audio_data, image):
 # ======================
 # GRADIO INTERFACE
 # ======================
-# Create interface with proper configuration for Hugging Face Spaces
-with gr.Blocks(
-    theme=gr.themes.Soft(), 
-    title="NoonVision - AI Vision Assistant",
-    css="""
-    .gradio-container {
-        max-width: 900px !important;
-    }
-    """
-) as demo:
+with gr.Blocks(theme=gr.themes.Soft(), title="NoonVision - AI Vision Assistant") as demo:
     gr.HTML("""
     <div style="text-align: center; margin-bottom: 20px;">
         <h1>🦾 NoonVision - Hands-Free AI Vision Assistant</h1>
@@ -226,80 +203,63 @@ with gr.Blocks(
     with gr.Row():
         with gr.Column():
             webcam = gr.Image(
-                sources="webcam", 
+                sources=["webcam"], 
                 label="Live Camera", 
                 streaming=False,
-                height=400,
-                type="pil"
+                shape=(480, 640)
             )
             
         with gr.Column():
             output_image = gr.Image(
-                label="Detected Objects", 
-                height=400,
-                type="pil"
+                label="Detected Objects"
             )
     
     with gr.Row():
         microphone = gr.Audio(
-            sources="microphone", 
+            sources=["microphone"], 
             type="numpy",
-            label="Speak Commands",
-            show_download_button=False
+            label="🎤 Speak Commands"
         )
     
     with gr.Row():
         status_display = gr.Textbox(
-            label="Status",
+            label="📊 Status",
             value="🎤 Allow microphone permissions and speak a trigger phrase...",
-            lines=2,
+            interactive=False
+        )
+    
+    with gr.Row():
+        transcription_display = gr.Textbox(
+            label="🔊 What I heard",
             interactive=False
         )
     
     audio_output = gr.Audio(
-        label="Audio Description",
-        autoplay=True,
-        type="filepath"
-    )
-    
-    transcription_display = gr.Textbox(
-        label="What I heard",
-        interactive=False,
-        visible=True
+        label="🔊 Audio Description",
+        interactive=False
     )
     
     # Instructions
     with gr.Accordion("📖 How to use:", open=False):
         gr.Markdown("""
-        1. **Allow camera and microphone permissions** when prompted
-        2. **Speak clearly** one of these trigger phrases:
+        1. **Allow permissions** - Click "Allow" for camera and microphone
+        2. **Speak a trigger phrase:**
            - "Detect"
            - "What do you see?"
            - "What's in front of me?"
            - "Identify objects"
            - "Scan"
            - "Look"
-        3. **Wait for detection** - objects will be highlighted
-        4. **Listen** to the audio description of what was detected
+        3. **Wait for detection** - Objects will be highlighted
+        4. **Listen to audio description**
         
-        **Note:** This runs entirely on CPU, so detection may take 2-3 seconds.
+        **Note:** CPU processing takes 2-3 seconds per detection
         """)
     
-    # Trigger phrases display
-    with gr.Accordion("🎯 Available Commands", open=False):
-        gr.Markdown("\n".join([f"- **'{phrase}'**" for phrase in TRIGGER_PHRASES]))
-    
-    # Process when audio is provided
+    # Process when audio stops recording
     microphone.stop_recording(
         fn=process_input,
         inputs=[microphone, webcam],
-        outputs=[output_image, status_display, audio_output, transcription_display]
-    )
-    
-    # Also process when image updates (for manual trigger)
-    webcam.change(
-        fn=lambda img: (img, "Camera active. Speak a command!", None, ""),
-        inputs=[webcam],
         outputs=[output_image, status_display, audio_output, transcription_display]
     )
 
@@ -307,19 +267,18 @@ with gr.Blocks(
 # LAUNCH APPLICATION
 # ======================
 if __name__ == "__main__":
-    # Clean up any old audio files
-    for file in os.listdir("/tmp"):
-        if file.startswith("detected_") and file.endswith(".mp3"):
-            try:
+    # Cleanup old files
+    try:
+        for file in os.listdir("/tmp"):
+            if file.startswith("detected_") and file.endswith(".mp3"):
                 os.remove(os.path.join("/tmp", file))
-            except:
-                pass
+    except:
+        pass
     
-    # Launch with Hugging Face Spaces compatibility
+    # Launch app - Hugging Face Spaces will handle networking
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
         share=False,
-        debug=False,
-        show_api=False
+        debug=False
     )
