@@ -8,13 +8,18 @@ import time
 from transformers import pipeline
 import torch
 from collections import Counter
+import warnings
+
+# Suppress warnings
+warnings.filterwarnings("ignore")
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # ============================================
 # OPTIMIZED CONFIGURATION FOR SPEED
 # ============================================
-CONF_THRESHOLD = 0.30  # Increased for better accuracy
-IMG_SIZE = 640  # Reduced for FASTER processing (was 960)
-BOX_COLOR = (0, 255, 0)  # Bright green for visibility
+CONF_THRESHOLD = 0.30
+IMG_SIZE = 640
+BOX_COLOR = (0, 255, 0)
 BOX_WIDTH = 4
 FONT_SIZE = 18
 
@@ -26,24 +31,21 @@ print("🔄 Loading models (optimized for speed)...")
 # YOLOv8 with optimization
 try:
     model = YOLO("yolov8m.pt")
-    
-    # SPEED OPTIMIZATION: Warm up with smaller image
     dummy = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
     _ = model(dummy, verbose=False, half=True if torch.cuda.is_available() else False)
-    
     print("✅ YOLOv8m loaded successfully (optimized)")
 except Exception as e:
     print(f"❌ YOLO model failed to load: {e}")
     model = None
 
-# Whisper - kept lightweight
+# Whisper - lightweight
 try:
     device = 0 if torch.cuda.is_available() else -1
     stt_pipe = pipeline(
         "automatic-speech-recognition",
         model="openai/whisper-tiny.en",
         device=device,
-        chunk_length_s=5  # SPEED OPTIMIZATION
+        chunk_length_s=5
     )
     print(f"✅ Whisper loaded on {'GPU' if device == 0 else 'CPU'}")
 except Exception as e:
@@ -77,13 +79,13 @@ def detect_objects_enhanced(image, conf_threshold=CONF_THRESHOLD):
             img_np = image
             img_pil = Image.fromarray(image)
         
-        # FAST DETECTION with optimizations
+        # FAST DETECTION
         results = model(
             img_np, 
             imgsz=IMG_SIZE,
             conf=conf_threshold,
             verbose=False,
-            half=True if torch.cuda.is_available() else False,  # FP16 if GPU
+            half=True if torch.cuda.is_available() else False,
             device=0 if torch.cuda.is_available() else 'cpu'
         )[0]
         
@@ -110,7 +112,6 @@ def detect_objects_enhanced(image, conf_threshold=CONF_THRESHOLD):
             
             detected_labels.append(label)
             
-            # Draw box and label
             draw.rectangle([x1, y1, x2, y2], outline=BOX_COLOR, width=BOX_WIDTH)
             text = f"{label} {conf:.2f}"
             bbox = draw.textbbox((x1, y1 - 25), text, font=font)
@@ -154,7 +155,6 @@ def generate_audio_description(labels):
                 else:
                     tts_text = f"I see {', '.join(items[:-1])}, and {items[-1]}."
         
-        # Fast audio generation
         filename = f"detected_{int(time.time()*1000)}.mp3"
         tts = gTTS(text=tts_text, lang='en', slow=False)
         tts.save(filename)
@@ -175,7 +175,6 @@ def transcribe_streaming_audio(audio_tuple):
     try:
         sample_rate, audio_data = audio_tuple
         
-        # Convert to mono float32
         if len(audio_data.shape) > 1:
             audio_data = audio_data.mean(axis=1)
         
@@ -183,7 +182,6 @@ def transcribe_streaming_audio(audio_tuple):
         if audio_data.max() > 1.0:
             audio_data = audio_data / 32768.0
         
-        # Transcribe
         result = stt_pipe({"sampling_rate": sample_rate, "raw": audio_data})
         transcribed_text = result["text"].strip().lower()
         
@@ -196,33 +194,26 @@ def transcribe_streaming_audio(audio_tuple):
         return ""
 
 def process_camera_stream(latest_frame, transcribed_text, last_detection_image):
-    """Main processing loop - checks for trigger and runs detection."""
+    """Main processing loop."""
     
     if latest_frame is None:
         return latest_frame, last_detection_image, None, "⏳ Waiting for camera...", ""
     
-    # Check for trigger
     is_triggered = any(phrase in transcribed_text for phrase in TRIGGER_PHRASES)
     
     if is_triggered:
         print(f"🎤 Trigger: '{transcribed_text}'")
-        
-        # Run fast detection
         annotated_img, audio_file, status_msg = detect_objects_enhanced(latest_frame, CONF_THRESHOLD)
-        
-        # Clear transcription after detection
         return latest_frame, annotated_img, audio_file, status_msg, ""
     
-    # No trigger - keep listening
     status_msg = f"🎤 Listening... (say 'detect')" if not transcribed_text else f"🎤 Heard: '{transcribed_text}'"
     
     return latest_frame, last_detection_image, None, status_msg, transcribed_text
 
 # ============================================
-# GRADIO INTERFACE
+# GRADIO INTERFACE (FIXED)
 # ============================================
 
-# Auto-start JavaScript
 AUTO_START_JS = """
 function start_mic_stream() {
     setTimeout(() => {
@@ -272,7 +263,6 @@ with gr.Blocks(
     js=AUTO_START_JS
 ) as demo:
     
-    # Header
     gr.HTML("""
         <div class="main-header">
             <h1>🦾 NoonVision</h1>
@@ -281,7 +271,6 @@ with gr.Blocks(
         </div>
     """)
     
-    # Instructions
     gr.Markdown("""
     <div class="instruction-box">
     <h3>🎤 Voice-Activated Mode (Auto-Start)</h3>
@@ -298,12 +287,11 @@ with gr.Blocks(
     </div>
     """)
     
-    # Main Interface
     with gr.Row():
         with gr.Column(scale=1):
             image_input = gr.Image(
                 type="pil",
-                sources="webcam",
+                sources=["webcam"],
                 label="📷 Live Camera Feed",
                 streaming=True,
                 interactive=False,
@@ -317,7 +305,6 @@ with gr.Blocks(
                 height=450
             )
     
-    # Status
     gr.Markdown("### 📊 System Status")
     status_output = gr.Textbox(
         label="",
@@ -326,9 +313,9 @@ with gr.Blocks(
         elem_classes="status-box"
     )
     
-    # Hidden components
+    # Hidden components (FIX: Using list instead of string for sources)
     voice_input = gr.Audio(
-        sources="microphone",
+        sources=["microphone"],
         type="numpy",
         streaming=True,
         visible=False,
@@ -355,11 +342,11 @@ with gr.Blocks(
         fn=process_camera_stream,
         inputs=[image_input, transcribed_state, image_output],
         outputs=[image_input, image_output, audio_output, status_output, transcribed_state],
-        every=0.15,  # Optimized timing
+        time_limit=None,
+        stream_every=0.15,
         show_progress=False
     )
     
-    # Footer with stats
     gr.Markdown("""
     ---
     <div style="text-align: center; color: #666; padding: 20px;">
@@ -370,11 +357,13 @@ with gr.Blocks(
     """)
 
 # ============================================
-# LAUNCH
+# LAUNCH (FIXED FOR HUGGING FACE)
 # ============================================
 if __name__ == "__main__":
     demo.launch(
-        share=False,
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=True,  # CRITICAL: Required for Hugging Face
         show_error=True,
         show_api=False
     )
