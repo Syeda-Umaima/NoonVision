@@ -1,8 +1,15 @@
-gradio>=5.0.0
+# NoonVision Dependencies - Force rebuild v2
+# Updated: 2025-12-30
+
+# Pin exact Gradio version compatible with latest huggingface_hub
+gradio==5.8.0
+
+# ML dependencies
 torch>=2.0.0
 torchvision>=0.15.0
 ultralytics>=8.0.0
+
+# Core utilities
 numpy>=1.24.0
 Pillow>=9.0.0
 gTTS>=2.3.0
-huggingface_hub>=0.25.0
