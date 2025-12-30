@@ -4,36 +4,33 @@ emoji: 🦾
 colorFrom: green
 colorTo: blue
 sdk: gradio
-sdk_version: "4.44.0"
+sdk_version: "5.6.0"
 app_file: app.py
 pinned: true
 ---
 
 # 🦾 NoonVision – Hands-Free AI Vision Assistant
 
-**Voice-Activated Object Detection for the Visually Impaired**
+**Voice-Activated Object Detection**
 
 ## 🎤 How to Use
 
-1. **Allow** camera and microphone permissions
-2. **Click** the camera icon to start webcam
-3. **Say "Detect"** or "What do you see?"
-4. **Listen** to audio description
-5. **Repeat!**
+1. **Allow** camera & microphone
+2. **Say "Detect"** 
+3. **Listen** to results
+4. **Repeat!**
 
-## 🎯 Features
+## 🗣️ Voice Commands
 
-- 80+ detectable objects
-- 1-2 second response time
-- Voice-activated (Chrome/Edge)
-- Audio feedback
+- "Detect"
+- "What do you see?"
+- "Identify"
+- "Scan"
 
-## 💡 Tips
+## 🌐 Best Browsers
 
-- Good lighting helps
-- Objects 2-6 feet away
-- Speak clearly
-- Use Chrome or Edge browser
+- ✅ Chrome
+- ✅ Edge
 
 ---
 Made with ❤️ for accessibility
