@@ -27,9 +27,6 @@ except Exception as e:
     print(f"❌ YOLO failed: {e}")
     model = None
 
-# Trigger phrases for voice detection
-TRIGGER_PHRASES = ["detect", "what do you see", "what's in front", "identify", "scan", "look", "what is in front", "what's this", "what is this"]
-
 def get_audio_base64(filepath):
     """Convert audio file to base64 for embedding in HTML"""
     try:
@@ -114,10 +111,13 @@ def generate_error_audio(text):
 
 def detect_objects(image):
     """Main detection function - returns annotated image and audio"""
+    print(f"[DEBUG] detect_objects called with image type: {type(image)}")
+    
     if image is None:
+        print("[DEBUG] Image is None!")
         error_text = "I cannot see anything right now. Please make sure the camera is working and try again."
         error_audio = generate_error_audio(error_text)
-        return None, error_audio, "⚠️ No image received from camera"
+        return None, error_audio, "⚠️ No image received - Please click the camera icon to capture first"
     
     if model is None:
         error_text = "The detection system is not ready yet. Please wait a moment and try again."
@@ -134,6 +134,8 @@ def detect_objects(image):
         else:
             img_np = image
             img_pil = Image.fromarray(image)
+        
+        print(f"[DEBUG] Image shape: {img_np.shape}")
         
         # Run YOLO detection
         results = model(img_np, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)[0]
@@ -180,9 +182,11 @@ def detect_objects(image):
         else:
             status = f"🔍 No objects detected ({elapsed:.2f}s) - Try adjusting camera angle or lighting"
         
+        print(f"[DEBUG] Detection complete: {status}")
         return img_pil, audio, status
         
     except Exception as e:
+        print(f"[DEBUG] Exception: {str(e)}")
         error_text = "Sorry, something went wrong during detection. Please try again."
         error_audio = generate_error_audio(error_text)
         return None, error_audio, f"❌ Error: {str(e)}"
@@ -195,7 +199,7 @@ startup_audio_base64 = get_audio_base64(startup_audio_file)
 processing_audio_base64 = get_audio_base64(processing_audio_file)
 print("✅ Audio files ready")
 
-# Custom CSS for accessibility and styling
+# Custom CSS
 CUSTOM_CSS = """
 .listening-active {
     background: linear-gradient(90deg, #22c55e20, #22c55e10);
@@ -246,22 +250,6 @@ CUSTOM_CSS = """
     min-height: 40px;
 }
 
-.result-image {
-    border: 3px solid #22c55e;
-    border-radius: 12px;
-}
-
-.webcam-container {
-    border: 2px solid #667eea;
-    border-radius: 12px;
-    overflow: hidden;
-}
-
-audio {
-    width: 100%;
-    margin-top: 10px;
-}
-
 .browser-warning {
     background: #fef2f2;
     border: 1px solid #ef4444;
@@ -274,9 +262,14 @@ audio {
 .browser-warning.show {
     display: block;
 }
+
+/* Style the webcam capture button to be more visible */
+.webcam-container button {
+    background: #667eea !important;
+}
 """
 
-# JavaScript for Web Speech API
+# JavaScript for Web Speech API with auto-capture
 JS_CODE = """
 <script>
 (function() {
@@ -422,6 +415,52 @@ JS_CODE = """
         }
     }
     
+    function findWebcamCaptureButton() {
+        // Find the webcam component's capture/snapshot button
+        // In Gradio 5, it's usually a button with a camera icon inside the image component
+        const webcamContainer = document.querySelector('[data-testid="image"]');
+        if (webcamContainer) {
+            // Look for the capture button (camera icon button)
+            const buttons = webcamContainer.querySelectorAll('button');
+            for (const btn of buttons) {
+                // The capture button usually has an icon or specific class
+                if (btn.querySelector('svg') || btn.getAttribute('aria-label')?.includes('capture') || 
+                    btn.classList.contains('snapshot') || btn.innerHTML.includes('camera')) {
+                    return btn;
+                }
+            }
+            // Fallback: return first button in webcam area
+            if (buttons.length > 0) {
+                return buttons[0];
+            }
+        }
+        
+        // Alternative: look for any button with camera-related attributes
+        const allButtons = document.querySelectorAll('button');
+        for (const btn of allButtons) {
+            const ariaLabel = btn.getAttribute('aria-label') || '';
+            const title = btn.getAttribute('title') || '';
+            if (ariaLabel.toLowerCase().includes('capture') || 
+                ariaLabel.toLowerCase().includes('snapshot') ||
+                title.toLowerCase().includes('capture') ||
+                title.toLowerCase().includes('photo')) {
+                return btn;
+            }
+        }
+        
+        return null;
+    }
+    
+    function findDetectButton() {
+        const allButtons = document.querySelectorAll('button');
+        for (const btn of allButtons) {
+            if (btn.textContent && btn.textContent.trim() === 'Detect') {
+                return btn;
+            }
+        }
+        return null;
+    }
+    
     function triggerDetection() {
         if (isProcessing) {
             console.log('Already processing, ignoring');
@@ -429,34 +468,46 @@ JS_CODE = """
         }
         
         isProcessing = true;
-        updateUI('processing', '🔍 Analyzing image... Please wait.');
+        updateUI('processing', '🔍 Capturing image and analyzing... Please wait.');
         
         stopListening();
         
+        // Play processing sound
         const processingAudio = document.getElementById('processing-audio');
         if (processingAudio) {
             processingAudio.currentTime = 0;
             processingAudio.play().catch(e => console.log('Processing audio blocked:', e));
         }
         
-        setTimeout(() => {
-            const allButtons = document.querySelectorAll('button');
-            let detectBtn = null;
+        // Step 1: Find and click the webcam capture button
+        const captureBtn = findWebcamCaptureButton();
+        
+        if (captureBtn) {
+            console.log('📸 Found capture button, clicking to capture image...');
+            captureBtn.click();
             
-            allButtons.forEach(btn => {
-                if (btn.textContent && btn.textContent.trim() === 'Detect') {
-                    detectBtn = btn;
+            // Step 2: Wait for capture, then click detect
+            setTimeout(() => {
+                const detectBtn = findDetectButton();
+                if (detectBtn) {
+                    console.log('🔘 Clicking detect button...');
+                    detectBtn.click();
+                } else {
+                    console.error('Could not find detect button');
+                    detectionComplete();
                 }
-            });
-            
+            }, 500); // Wait 500ms for image to be captured
+        } else {
+            console.log('⚠️ No capture button found, trying detect directly...');
+            // Maybe image is already captured, try detect directly
+            const detectBtn = findDetectButton();
             if (detectBtn) {
-                console.log('🔘 Clicking detect button');
                 detectBtn.click();
             } else {
-                console.error('Could not find detect button');
+                console.error('Could not find any buttons');
                 detectionComplete();
             }
-        }, 100);
+        }
     }
     
     function detectionComplete() {
@@ -587,7 +638,7 @@ with gr.Blocks(
             webcam = gr.Image(
                 sources=["webcam"],
                 type="pil",
-                label="📷 Live Camera Feed",
+                label="📷 Live Camera Feed (Click 📷 to capture, or just say 'Detect')",
                 mirror_webcam=True
             )
         
@@ -610,7 +661,7 @@ with gr.Blocks(
                 autoplay=True
             )
     
-    # Hidden detect button (triggered by JavaScript)
+    # Hidden detect button
     with gr.Row(visible=False):
         hidden_btn = gr.Button("Detect")
     
