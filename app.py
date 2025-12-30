@@ -7,6 +7,7 @@ import time
 from collections import Counter
 import os
 import base64
+import io
 
 # Configuration
 CONF_THRESHOLD = 0.30
@@ -28,7 +29,7 @@ except Exception as e:
     model = None
 
 def get_audio_base64(filepath):
-    """Convert audio file to base64 for embedding in HTML"""
+    """Convert audio file to base64"""
     try:
         if filepath and os.path.exists(filepath):
             with open(filepath, "rb") as f:
@@ -38,7 +39,7 @@ def get_audio_base64(filepath):
     return ""
 
 def generate_startup_audio():
-    """Generate startup announcement audio"""
+    """Generate startup announcement"""
     try:
         text = "NoonVision ready. Say detect to identify objects around you."
         filename = "startup_audio.mp3"
@@ -50,7 +51,7 @@ def generate_startup_audio():
         return None
 
 def generate_processing_audio():
-    """Generate processing indicator audio"""
+    """Generate processing indicator"""
     try:
         text = "Processing."
         filename = "processing_audio.mp3"
@@ -62,10 +63,10 @@ def generate_processing_audio():
         return None
 
 def generate_result_audio(labels):
-    """Generate natural speech for detected objects with listening prompt"""
+    """Generate speech for detected objects"""
     try:
         if not labels:
-            text = "I don't see any recognizable objects at the moment. Try pointing the camera at something else, or move a bit closer to the object."
+            text = "I don't see any recognizable objects at the moment. Try pointing the camera at something else, or move a bit closer."
         else:
             counts = Counter(labels)
             if len(counts) == 1:
@@ -87,7 +88,6 @@ def generate_result_audio(labels):
                 else:
                     text = f"I can see {', '.join(items[:-1])}, and {items[-1]}."
         
-        # Add listening prompt at the end
         text += " ... Listening. Say detect when ready."
         
         filename = f"result_{int(time.time()*1000)}.mp3"
@@ -95,7 +95,7 @@ def generate_result_audio(labels):
         tts.save(filename)
         return filename
     except Exception as e:
-        print(f"⚠️ Audio generation error: {e}")
+        print(f"⚠️ Audio error: {e}")
         return None
 
 def generate_error_audio(text):
@@ -109,33 +109,33 @@ def generate_error_audio(text):
     except:
         return None
 
-def detect_objects(image):
-    """Main detection function - returns annotated image and audio"""
-    print(f"[DEBUG] detect_objects called with image type: {type(image)}")
+def detect_from_base64(image_base64):
+    """Detect objects from base64 encoded image"""
+    print(f"[DEBUG] Received image data, length: {len(image_base64) if image_base64 else 0}")
     
-    if image is None:
-        print("[DEBUG] Image is None!")
-        error_text = "I cannot see anything right now. Please make sure the camera is working and try again."
+    if not image_base64 or len(image_base64) < 100:
+        error_text = "I cannot see anything right now. Please make sure the camera is working."
         error_audio = generate_error_audio(error_text)
-        return None, error_audio, "⚠️ No image received - Please click the camera icon to capture first"
+        return None, error_audio, "⚠️ No image received from camera"
     
     if model is None:
-        error_text = "The detection system is not ready yet. Please wait a moment and try again."
+        error_text = "The detection system is not ready yet. Please wait a moment."
         error_audio = generate_error_audio(error_text)
         return None, error_audio, "⚠️ Model not loaded"
     
     try:
         start = time.time()
         
-        # Convert image
-        if isinstance(image, Image.Image):
-            img_np = np.array(image)
-            img_pil = image.copy()
-        else:
-            img_np = image
-            img_pil = Image.fromarray(image)
+        # Decode base64 image
+        # Remove data URL prefix if present
+        if ',' in image_base64:
+            image_base64 = image_base64.split(',')[1]
         
-        print(f"[DEBUG] Image shape: {img_np.shape}")
+        image_data = base64.b64decode(image_base64)
+        img_pil = Image.open(io.BytesIO(image_data)).convert('RGB')
+        img_np = np.array(img_pil)
+        
+        print(f"[DEBUG] Image decoded, shape: {img_np.shape}")
         
         # Run YOLO detection
         results = model(img_np, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)[0]
@@ -145,7 +145,7 @@ def detect_objects(image):
         confidences = results.boxes.conf.cpu().numpy()
         class_ids = results.boxes.cls.cpu().numpy()
         
-        # Draw bounding boxes on image
+        # Draw bounding boxes
         draw = ImageDraw.Draw(img_pil)
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", FONT_SIZE)
@@ -165,14 +165,13 @@ def detect_objects(image):
             
             detected_labels.append(label)
             
-            # Draw bounding box
             draw.rectangle([x1, y1, x2, y2], outline=BOX_COLOR, width=BOX_WIDTH)
             text = f"{label} {conf:.2f}"
             bbox = draw.textbbox((x1, y1 - 25), text, font=font)
             draw.rectangle(bbox, fill=BOX_COLOR)
             draw.text((x1, y1 - 25), text, fill="black", font=font)
         
-        # Generate result audio
+        # Generate audio
         audio = generate_result_audio(detected_labels)
         
         elapsed = time.time() - start
@@ -180,18 +179,20 @@ def detect_objects(image):
         if detected_labels:
             status = f"✅ Found {len(detected_labels)} object(s) in {elapsed:.2f}s: {', '.join(set(detected_labels))}"
         else:
-            status = f"🔍 No objects detected ({elapsed:.2f}s) - Try adjusting camera angle or lighting"
+            status = f"🔍 No objects detected ({elapsed:.2f}s)"
         
         print(f"[DEBUG] Detection complete: {status}")
         return img_pil, audio, status
         
     except Exception as e:
         print(f"[DEBUG] Exception: {str(e)}")
-        error_text = "Sorry, something went wrong during detection. Please try again."
+        import traceback
+        traceback.print_exc()
+        error_text = "Sorry, something went wrong. Please try again."
         error_audio = generate_error_audio(error_text)
         return None, error_audio, f"❌ Error: {str(e)}"
 
-# Pre-generate audio files at startup
+# Pre-generate audio files
 print("🔊 Generating startup audio files...")
 startup_audio_file = generate_startup_audio()
 processing_audio_file = generate_processing_audio()
@@ -201,6 +202,27 @@ print("✅ Audio files ready")
 
 # Custom CSS
 CUSTOM_CSS = """
+#video-container {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 3px solid #667eea;
+}
+
+#webcam-video {
+    width: 100%;
+    height: auto;
+    display: block;
+    transform: scaleX(-1);
+}
+
+#hidden-canvas {
+    display: none;
+}
+
 .listening-active {
     background: linear-gradient(90deg, #22c55e20, #22c55e10);
     padding: 15px;
@@ -263,328 +285,24 @@ CUSTOM_CSS = """
     display: block;
 }
 
-/* Style the webcam capture button to be more visible */
-.webcam-container button {
-    background: #667eea !important;
+.camera-status {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(34, 197, 94, 0.9);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.camera-status.error {
+    background: rgba(239, 68, 68, 0.9);
 }
 """
 
-# JavaScript for Web Speech API with auto-capture
-JS_CODE = """
-<script>
-(function() {
-    let recognition = null;
-    let isProcessing = false;
-    let isListening = false;
-    let hasInteracted = false;
-    
-    const TRIGGER_PHRASES = ["detect", "what do you see", "what's in front", "identify", "scan", "look", "what is in front", "what's this", "what is this"];
-    
-    function containsTrigger(text) {
-        const lowerText = text.toLowerCase();
-        return TRIGGER_PHRASES.some(phrase => lowerText.includes(phrase));
-    }
-    
-    function updateUI(state, message) {
-        const indicator = document.getElementById('listening-indicator');
-        const status = document.getElementById('status-display');
-        
-        if (indicator) {
-            if (state === 'listening') {
-                indicator.className = 'listening-active';
-                indicator.innerHTML = '🎤 <span style="color: #22c55e; font-weight: bold;">Listening...</span> Say "Detect" or "What do you see?"';
-            } else if (state === 'processing') {
-                indicator.className = 'processing-active';
-                indicator.innerHTML = '🔍 <span style="color: #3b82f6; font-weight: bold;">Processing...</span> Please wait';
-            } else if (state === 'paused') {
-                indicator.className = 'listening-paused';
-                indicator.innerHTML = '⏸️ <span style="color: #f59e0b;">Paused</span> - ' + message;
-            } else if (state === 'error') {
-                indicator.className = 'listening-paused';
-                indicator.innerHTML = '⚠️ <span style="color: #ef4444;">' + message + '</span>';
-            }
-        }
-        
-        if (status && message) {
-            status.innerHTML = message;
-        }
-    }
-    
-    function initSpeechRecognition() {
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            console.error('Speech recognition not supported');
-            const warning = document.getElementById('browser-warning');
-            if (warning) warning.classList.add('show');
-            updateUI('error', 'Speech recognition not supported. Please use Chrome or Edge browser.');
-            return false;
-        }
-        
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-        recognition.maxAlternatives = 1;
-        
-        recognition.onstart = function() {
-            isListening = true;
-            console.log('🎤 Voice recognition started');
-            if (!isProcessing) {
-                updateUI('listening', '🎤 Listening for voice commands...');
-            }
-        };
-        
-        recognition.onresult = function(event) {
-            if (isProcessing) {
-                console.log('⏳ Already processing, ignoring input');
-                return;
-            }
-            
-            const last = event.results.length - 1;
-            const text = event.results[last][0].transcript;
-            const confidence = event.results[last][0].confidence;
-            
-            console.log('Heard:', text, 'Confidence:', confidence);
-            
-            const heardEl = document.getElementById('heard-text');
-            if (heardEl) {
-                heardEl.innerHTML = '🗣️ Heard: "' + text + '"';
-            }
-            
-            if (containsTrigger(text)) {
-                console.log('🎯 Trigger word detected!');
-                triggerDetection();
-            }
-        };
-        
-        recognition.onerror = function(event) {
-            console.error('Speech recognition error:', event.error);
-            
-            if (event.error === 'not-allowed') {
-                updateUI('error', 'Microphone access denied. Please allow microphone permission and refresh the page.');
-                const warning = document.getElementById('browser-warning');
-                if (warning) warning.classList.add('show');
-            } else if (event.error === 'no-speech') {
-                if (!isProcessing) {
-                    setTimeout(startListening, 100);
-                }
-            } else if (event.error === 'audio-capture') {
-                updateUI('error', 'No microphone found. Please connect a microphone and refresh.');
-            } else {
-                console.log('Restarting after error:', event.error);
-                setTimeout(startListening, 1000);
-            }
-        };
-        
-        recognition.onend = function() {
-            isListening = false;
-            console.log('🎤 Voice recognition ended');
-            
-            if (!isProcessing) {
-                setTimeout(startListening, 300);
-            }
-        };
-        
-        return true;
-    }
-    
-    function startListening() {
-        if (!recognition) {
-            if (!initSpeechRecognition()) {
-                return;
-            }
-        }
-        
-        if (!isListening && !isProcessing) {
-            try {
-                recognition.start();
-                console.log('🎤 Starting voice recognition...');
-            } catch (e) {
-                console.log('Recognition already running');
-            }
-        }
-    }
-    
-    function stopListening() {
-        if (recognition && isListening) {
-            try {
-                recognition.stop();
-            } catch (e) {
-                console.log('Error stopping recognition:', e);
-            }
-        }
-    }
-    
-    function findWebcamCaptureButton() {
-        // Find the webcam component's capture/snapshot button
-        // In Gradio 5, it's usually a button with a camera icon inside the image component
-        const webcamContainer = document.querySelector('[data-testid="image"]');
-        if (webcamContainer) {
-            // Look for the capture button (camera icon button)
-            const buttons = webcamContainer.querySelectorAll('button');
-            for (const btn of buttons) {
-                // The capture button usually has an icon or specific class
-                if (btn.querySelector('svg') || btn.getAttribute('aria-label')?.includes('capture') || 
-                    btn.classList.contains('snapshot') || btn.innerHTML.includes('camera')) {
-                    return btn;
-                }
-            }
-            // Fallback: return first button in webcam area
-            if (buttons.length > 0) {
-                return buttons[0];
-            }
-        }
-        
-        // Alternative: look for any button with camera-related attributes
-        const allButtons = document.querySelectorAll('button');
-        for (const btn of allButtons) {
-            const ariaLabel = btn.getAttribute('aria-label') || '';
-            const title = btn.getAttribute('title') || '';
-            if (ariaLabel.toLowerCase().includes('capture') || 
-                ariaLabel.toLowerCase().includes('snapshot') ||
-                title.toLowerCase().includes('capture') ||
-                title.toLowerCase().includes('photo')) {
-                return btn;
-            }
-        }
-        
-        return null;
-    }
-    
-    function findDetectButton() {
-        const allButtons = document.querySelectorAll('button');
-        for (const btn of allButtons) {
-            if (btn.textContent && btn.textContent.trim() === 'Detect') {
-                return btn;
-            }
-        }
-        return null;
-    }
-    
-    function triggerDetection() {
-        if (isProcessing) {
-            console.log('Already processing, ignoring');
-            return;
-        }
-        
-        isProcessing = true;
-        updateUI('processing', '🔍 Capturing image and analyzing... Please wait.');
-        
-        stopListening();
-        
-        // Play processing sound
-        const processingAudio = document.getElementById('processing-audio');
-        if (processingAudio) {
-            processingAudio.currentTime = 0;
-            processingAudio.play().catch(e => console.log('Processing audio blocked:', e));
-        }
-        
-        // Step 1: Find and click the webcam capture button
-        const captureBtn = findWebcamCaptureButton();
-        
-        if (captureBtn) {
-            console.log('📸 Found capture button, clicking to capture image...');
-            captureBtn.click();
-            
-            // Step 2: Wait for capture, then click detect
-            setTimeout(() => {
-                const detectBtn = findDetectButton();
-                if (detectBtn) {
-                    console.log('🔘 Clicking detect button...');
-                    detectBtn.click();
-                } else {
-                    console.error('Could not find detect button');
-                    detectionComplete();
-                }
-            }, 500); // Wait 500ms for image to be captured
-        } else {
-            console.log('⚠️ No capture button found, trying detect directly...');
-            // Maybe image is already captured, try detect directly
-            const detectBtn = findDetectButton();
-            if (detectBtn) {
-                detectBtn.click();
-            } else {
-                console.error('Could not find any buttons');
-                detectionComplete();
-            }
-        }
-    }
-    
-    function detectionComplete() {
-        console.log('✅ Detection complete');
-        isProcessing = false;
-        
-        setTimeout(() => {
-            updateUI('listening', '✅ Detection complete! Listening for next command...');
-            startListening();
-        }, 500);
-    }
-    
-    function playStartupAndBegin() {
-        const startupAudio = document.getElementById('startup-audio');
-        if (startupAudio) {
-            startupAudio.play()
-                .then(() => {
-                    console.log('🔊 Startup audio playing');
-                    startupAudio.onended = () => {
-                        console.log('🔊 Startup audio ended, beginning listening');
-                        startListening();
-                    };
-                })
-                .catch(e => {
-                    console.log('🔇 Auto-play blocked, starting without audio');
-                    startListening();
-                });
-        } else {
-            startListening();
-        }
-    }
-    
-    function handleFirstInteraction() {
-        if (!hasInteracted) {
-            hasInteracted = true;
-            console.log('👆 First interaction detected');
-            playStartupAndBegin();
-        }
-    }
-    
-    window.detectionComplete = detectionComplete;
-    window.noonvisionStart = playStartupAndBegin;
-    
-    function init() {
-        console.log('🚀 NoonVision initializing...');
-        
-        updateUI('paused', 'Click anywhere or speak to activate NoonVision');
-        
-        document.addEventListener('click', handleFirstInteraction, { once: false });
-        document.addEventListener('keydown', handleFirstInteraction, { once: false });
-        document.addEventListener('touchstart', handleFirstInteraction, { once: false });
-        
-        setTimeout(() => {
-            if (!hasInteracted) {
-                if (initSpeechRecognition()) {
-                    startListening();
-                    hasInteracted = true;
-                    
-                    const startupAudio = document.getElementById('startup-audio');
-                    if (startupAudio) {
-                        startupAudio.play().catch(() => {});
-                    }
-                }
-            }
-        }, 1500);
-    }
-    
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        setTimeout(init, 500);
-    }
-})();
-</script>
-"""
-
-# Build the Gradio interface
+# Build the interface
 with gr.Blocks(
     title="NoonVision - Hands-Free AI Vision Assistant",
     theme=gr.themes.Soft(),
@@ -603,8 +321,7 @@ with gr.Blocks(
     # Browser warning
     gr.HTML('''
     <div id="browser-warning" class="browser-warning">
-        <strong>⚠️ Browser Compatibility:</strong> Voice recognition works best in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>. 
-        If voice commands aren't working, please switch to one of these browsers.
+        <strong>⚠️ Browser Compatibility:</strong> Voice recognition works best in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>.
     </div>
     ''')
     
@@ -616,54 +333,54 @@ with gr.Blocks(
             <li><strong>Allow permissions</strong> when prompted for camera and microphone</li>
             <li><strong>Say "Detect"</strong> or "What do you see?" at any time</li>
             <li><strong>Listen</strong> to the audio description of detected objects</li>
-            <li><strong>Repeat</strong> - NoonVision automatically listens again after each detection</li>
+            <li><strong>Repeat</strong> - Camera stays open, just say detect again!</li>
         </ol>
         <p style="margin-bottom: 0; color: #166534;"><strong>💡 Tips:</strong> Speak clearly • Good lighting helps • Hold objects 2-6 feet from camera</p>
     </div>
     ''')
     
     # Status indicators
-    gr.HTML('''
-    <div id="listening-indicator" class="listening-active">
-        🎤 <span style="color: #22c55e; font-weight: bold;">Initializing...</span> Please allow microphone access
-    </div>
-    ''')
-    
-    gr.HTML('<div id="status-display">🚀 Starting NoonVision... Please allow camera and microphone permissions.</div>')
+    gr.HTML('<div id="listening-indicator" class="listening-active">🎤 <span style="color: #22c55e; font-weight: bold;">Initializing...</span></div>')
+    gr.HTML('<div id="status-display">🚀 Starting NoonVision...</div>')
     gr.HTML('<div id="heard-text">🗣️ Waiting for voice command...</div>')
     
-    # Main content area
+    # Main content
     with gr.Row():
         with gr.Column(scale=1):
-            webcam = gr.Image(
-                sources=["webcam"],
-                type="pil",
-                label="📷 Live Camera Feed (Click 📷 to capture, or just say 'Detect')",
-                mirror_webcam=True
-            )
+            # Custom HTML video element for live camera
+            gr.HTML('''
+            <div id="video-container">
+                <div id="camera-status" class="camera-status">📷 Camera Loading...</div>
+                <video id="webcam-video" autoplay playsinline muted></video>
+                <canvas id="hidden-canvas"></canvas>
+            </div>
+            ''')
         
         with gr.Column(scale=1):
             result_img = gr.Image(
                 type="pil",
-                label="🎯 Detection Results"
+                label="🎯 Detection Results",
+                elem_id="result-image"
             )
             
             status_text = gr.Textbox(
                 label="Detection Status",
                 value="Ready - Say 'Detect' to identify objects",
                 lines=2,
-                interactive=False
+                interactive=False,
+                elem_id="status-textbox"
             )
             
             audio_out = gr.Audio(
                 type="filepath",
-                label="🔊 Audio Result (plays automatically)",
-                autoplay=True
+                label="🔊 Audio Result",
+                autoplay=True,
+                elem_id="audio-output"
             )
     
-    # Hidden detect button
-    with gr.Row(visible=False):
-        hidden_btn = gr.Button("Detect")
+    # Hidden components for API communication
+    image_input = gr.Textbox(visible=False, elem_id="image-input")
+    detect_btn = gr.Button("Detect", visible=False, elem_id="detect-btn")
     
     # Audio elements
     gr.HTML(f'''
@@ -675,13 +392,314 @@ with gr.Blocks(
     </audio>
     ''')
     
-    # JavaScript
-    gr.HTML(JS_CODE)
+    # Main JavaScript
+    gr.HTML('''
+    <script>
+    (function() {
+        // State
+        let recognition = null;
+        let isProcessing = false;
+        let isListening = false;
+        let hasInteracted = false;
+        let videoStream = null;
+        let video = null;
+        let canvas = null;
+        let ctx = null;
+        
+        const TRIGGER_PHRASES = ["detect", "what do you see", "what's in front", "identify", "scan", "look", "what is in front", "what's this", "what is this"];
+        
+        function containsTrigger(text) {
+            const lowerText = text.toLowerCase();
+            return TRIGGER_PHRASES.some(phrase => lowerText.includes(phrase));
+        }
+        
+        function updateUI(state, message) {
+            const indicator = document.getElementById('listening-indicator');
+            const status = document.getElementById('status-display');
+            
+            if (indicator) {
+                if (state === 'listening') {
+                    indicator.className = 'listening-active';
+                    indicator.innerHTML = '🎤 <span style="color: #22c55e; font-weight: bold;">Listening...</span> Say "Detect" or "What do you see?"';
+                } else if (state === 'processing') {
+                    indicator.className = 'processing-active';
+                    indicator.innerHTML = '🔍 <span style="color: #3b82f6; font-weight: bold;">Processing...</span> Please wait';
+                } else if (state === 'paused') {
+                    indicator.className = 'listening-paused';
+                    indicator.innerHTML = '⏸️ <span style="color: #f59e0b;">Paused</span> - ' + message;
+                } else if (state === 'error') {
+                    indicator.className = 'listening-paused';
+                    indicator.innerHTML = '⚠️ <span style="color: #ef4444;">' + message + '</span>';
+                }
+            }
+            
+            if (status && message) {
+                status.innerHTML = message;
+            }
+        }
+        
+        function updateCameraStatus(text, isError) {
+            const statusEl = document.getElementById('camera-status');
+            if (statusEl) {
+                statusEl.textContent = text;
+                statusEl.className = isError ? 'camera-status error' : 'camera-status';
+            }
+        }
+        
+        // Initialize webcam
+        async function initCamera() {
+            video = document.getElementById('webcam-video');
+            canvas = document.getElementById('hidden-canvas');
+            
+            if (!video || !canvas) {
+                console.error('Video or canvas element not found');
+                setTimeout(initCamera, 500);
+                return;
+            }
+            
+            ctx = canvas.getContext('2d');
+            
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: false
+                });
+                
+                video.srcObject = videoStream;
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    updateCameraStatus('📷 Camera Active', false);
+                    console.log('📷 Camera initialized:', video.videoWidth, 'x', video.videoHeight);
+                };
+                
+            } catch (err) {
+                console.error('Camera error:', err);
+                updateCameraStatus('❌ Camera Error', true);
+                updateUI('error', 'Camera access denied. Please allow camera permission and refresh.');
+            }
+        }
+        
+        // Capture current frame
+        function captureFrame() {
+            if (!video || !canvas || !ctx) {
+                console.error('Video/canvas not ready');
+                return null;
+            }
+            
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+                console.error('Video not ready');
+                return null;
+            }
+            
+            // Draw current frame to canvas (flip horizontally to match mirrored video)
+            ctx.save();
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+            ctx.restore();
+            
+            // Get base64 image
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            console.log('📸 Frame captured, size:', imageData.length);
+            return imageData;
+        }
+        
+        // Speech recognition
+        function initSpeechRecognition() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                console.error('Speech recognition not supported');
+                document.getElementById('browser-warning').classList.add('show');
+                updateUI('error', 'Speech recognition not supported. Please use Chrome or Edge.');
+                return false;
+            }
+            
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+            
+            recognition.onstart = function() {
+                isListening = true;
+                if (!isProcessing) {
+                    updateUI('listening', '🎤 Listening for voice commands...');
+                }
+            };
+            
+            recognition.onresult = function(event) {
+                if (isProcessing) return;
+                
+                const last = event.results.length - 1;
+                const text = event.results[last][0].transcript;
+                
+                console.log('Heard:', text);
+                document.getElementById('heard-text').innerHTML = '🗣️ Heard: "' + text + '"';
+                
+                if (containsTrigger(text)) {
+                    console.log('🎯 Trigger detected!');
+                    triggerDetection();
+                }
+            };
+            
+            recognition.onerror = function(event) {
+                console.error('Speech error:', event.error);
+                if (event.error === 'not-allowed') {
+                    updateUI('error', 'Microphone denied. Please allow and refresh.');
+                } else if (event.error !== 'no-speech') {
+                    setTimeout(startListening, 1000);
+                }
+            };
+            
+            recognition.onend = function() {
+                isListening = false;
+                if (!isProcessing) {
+                    setTimeout(startListening, 300);
+                }
+            };
+            
+            return true;
+        }
+        
+        function startListening() {
+            if (!recognition && !initSpeechRecognition()) return;
+            
+            if (!isListening && !isProcessing) {
+                try {
+                    recognition.start();
+                } catch (e) {}
+            }
+        }
+        
+        function stopListening() {
+            if (recognition && isListening) {
+                try { recognition.stop(); } catch (e) {}
+            }
+        }
+        
+        // Trigger detection
+        function triggerDetection() {
+            if (isProcessing) return;
+            
+            isProcessing = true;
+            updateUI('processing', '🔍 Capturing and analyzing image...');
+            stopListening();
+            
+            // Play processing sound
+            const processingAudio = document.getElementById('processing-audio');
+            if (processingAudio) {
+                processingAudio.currentTime = 0;
+                processingAudio.play().catch(() => {});
+            }
+            
+            // Capture frame
+            const imageData = captureFrame();
+            
+            if (!imageData) {
+                console.error('Failed to capture frame');
+                updateUI('error', 'Failed to capture image. Please check camera.');
+                isProcessing = false;
+                startListening();
+                return;
+            }
+            
+            // Send to Gradio
+            const imageInput = document.querySelector('#image-input textarea');
+            const detectBtn = document.querySelector('#detect-btn');
+            
+            if (imageInput && detectBtn) {
+                // Set the image data
+                imageInput.value = imageData;
+                imageInput.dispatchEvent(new Event('input', { bubbles: true }));
+                
+                // Click detect button after a short delay
+                setTimeout(() => {
+                    detectBtn.click();
+                }, 100);
+            } else {
+                console.error('Could not find Gradio components');
+                isProcessing = false;
+                startListening();
+            }
+        }
+        
+        // Called when detection is complete
+        window.detectionComplete = function() {
+            console.log('✅ Detection complete');
+            isProcessing = false;
+            
+            // Clear result image after audio finishes (optional - keep for now)
+            setTimeout(() => {
+                updateUI('listening', '✅ Ready for next detection!');
+                startListening();
+            }, 1000);
+        };
+        
+        // Play startup and begin
+        function playStartupAndBegin() {
+            const startupAudio = document.getElementById('startup-audio');
+            if (startupAudio) {
+                startupAudio.play()
+                    .then(() => {
+                        startupAudio.onended = () => startListening();
+                    })
+                    .catch(() => startListening());
+            } else {
+                startListening();
+            }
+        }
+        
+        function handleFirstInteraction() {
+            if (!hasInteracted) {
+                hasInteracted = true;
+                playStartupAndBegin();
+            }
+        }
+        
+        // Initialize
+        function init() {
+            console.log('🚀 NoonVision initializing...');
+            
+            updateUI('paused', 'Click anywhere to activate NoonVision');
+            
+            // Init camera
+            initCamera();
+            
+            // Set up interaction handlers
+            document.addEventListener('click', handleFirstInteraction);
+            document.addEventListener('keydown', handleFirstInteraction);
+            document.addEventListener('touchstart', handleFirstInteraction);
+            
+            // Try auto-start after delay
+            setTimeout(() => {
+                if (!hasInteracted) {
+                    if (initSpeechRecognition()) {
+                        startListening();
+                        hasInteracted = true;
+                        const startupAudio = document.getElementById('startup-audio');
+                        if (startupAudio) startupAudio.play().catch(() => {});
+                    }
+                }
+            }, 2000);
+        }
+        
+        // Start when ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            setTimeout(init, 500);
+        }
+    })();
+    </script>
+    ''')
     
     # Event handler
-    hidden_btn.click(
-        fn=detect_objects,
-        inputs=webcam,
+    detect_btn.click(
+        fn=detect_from_base64,
+        inputs=image_input,
         outputs=[result_img, audio_out, status_text]
     ).then(
         fn=None,
@@ -693,16 +711,14 @@ with gr.Blocks(
     # Footer
     gr.HTML('''
     <div style="text-align: center; color: #666; padding: 20px; margin-top: 20px; border-top: 1px solid #e5e7eb;">
-        <p><strong>🎯 Detects 80+ objects:</strong> People, furniture, electronics, food, animals, vehicles, and more</p>
+        <p><strong>🎯 Detects 80+ objects:</strong> People, furniture, electronics, food, animals, vehicles</p>
         <p><strong>⚡ Response time:</strong> 1-2 seconds</p>
         <p style="margin-top: 15px; font-size: 0.9em;">
-            Built with YOLOv8 + Web Speech API<br>
-            <strong>Best experience:</strong> Chrome or Edge browser | Good lighting | Objects 2-6 feet away<br>
+            Built with YOLOv8 + Web Speech API | Chrome or Edge recommended<br>
             Made with ❤️ for accessibility
         </p>
     </div>
     ''')
 
-# Launch
 if __name__ == "__main__":
     demo.launch()
