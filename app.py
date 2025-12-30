@@ -251,20 +251,17 @@ CUSTOM_CSS = """
     border-radius: 12px;
 }
 
-/* Make sure webcam is prominent */
 .webcam-container {
     border: 2px solid #667eea;
     border-radius: 12px;
     overflow: hidden;
 }
 
-/* Ensure audio player is accessible */
 audio {
     width: 100%;
     margin-top: 10px;
 }
 
-/* Browser support warning */
 .browser-warning {
     background: #fef2f2;
     border: 1px solid #ef4444;
@@ -277,6 +274,263 @@ audio {
 .browser-warning.show {
     display: block;
 }
+"""
+
+# JavaScript for Web Speech API
+JS_CODE = """
+<script>
+(function() {
+    let recognition = null;
+    let isProcessing = false;
+    let isListening = false;
+    let hasInteracted = false;
+    
+    const TRIGGER_PHRASES = ["detect", "what do you see", "what's in front", "identify", "scan", "look", "what is in front", "what's this", "what is this"];
+    
+    function containsTrigger(text) {
+        const lowerText = text.toLowerCase();
+        return TRIGGER_PHRASES.some(phrase => lowerText.includes(phrase));
+    }
+    
+    function updateUI(state, message) {
+        const indicator = document.getElementById('listening-indicator');
+        const status = document.getElementById('status-display');
+        
+        if (indicator) {
+            if (state === 'listening') {
+                indicator.className = 'listening-active';
+                indicator.innerHTML = '🎤 <span style="color: #22c55e; font-weight: bold;">Listening...</span> Say "Detect" or "What do you see?"';
+            } else if (state === 'processing') {
+                indicator.className = 'processing-active';
+                indicator.innerHTML = '🔍 <span style="color: #3b82f6; font-weight: bold;">Processing...</span> Please wait';
+            } else if (state === 'paused') {
+                indicator.className = 'listening-paused';
+                indicator.innerHTML = '⏸️ <span style="color: #f59e0b;">Paused</span> - ' + message;
+            } else if (state === 'error') {
+                indicator.className = 'listening-paused';
+                indicator.innerHTML = '⚠️ <span style="color: #ef4444;">' + message + '</span>';
+            }
+        }
+        
+        if (status && message) {
+            status.innerHTML = message;
+        }
+    }
+    
+    function initSpeechRecognition() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            console.error('Speech recognition not supported');
+            const warning = document.getElementById('browser-warning');
+            if (warning) warning.classList.add('show');
+            updateUI('error', 'Speech recognition not supported. Please use Chrome or Edge browser.');
+            return false;
+        }
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        recognition.maxAlternatives = 1;
+        
+        recognition.onstart = function() {
+            isListening = true;
+            console.log('🎤 Voice recognition started');
+            if (!isProcessing) {
+                updateUI('listening', '🎤 Listening for voice commands...');
+            }
+        };
+        
+        recognition.onresult = function(event) {
+            if (isProcessing) {
+                console.log('⏳ Already processing, ignoring input');
+                return;
+            }
+            
+            const last = event.results.length - 1;
+            const text = event.results[last][0].transcript;
+            const confidence = event.results[last][0].confidence;
+            
+            console.log('Heard:', text, 'Confidence:', confidence);
+            
+            const heardEl = document.getElementById('heard-text');
+            if (heardEl) {
+                heardEl.innerHTML = '🗣️ Heard: "' + text + '"';
+            }
+            
+            if (containsTrigger(text)) {
+                console.log('🎯 Trigger word detected!');
+                triggerDetection();
+            }
+        };
+        
+        recognition.onerror = function(event) {
+            console.error('Speech recognition error:', event.error);
+            
+            if (event.error === 'not-allowed') {
+                updateUI('error', 'Microphone access denied. Please allow microphone permission and refresh the page.');
+                const warning = document.getElementById('browser-warning');
+                if (warning) warning.classList.add('show');
+            } else if (event.error === 'no-speech') {
+                if (!isProcessing) {
+                    setTimeout(startListening, 100);
+                }
+            } else if (event.error === 'audio-capture') {
+                updateUI('error', 'No microphone found. Please connect a microphone and refresh.');
+            } else {
+                console.log('Restarting after error:', event.error);
+                setTimeout(startListening, 1000);
+            }
+        };
+        
+        recognition.onend = function() {
+            isListening = false;
+            console.log('🎤 Voice recognition ended');
+            
+            if (!isProcessing) {
+                setTimeout(startListening, 300);
+            }
+        };
+        
+        return true;
+    }
+    
+    function startListening() {
+        if (!recognition) {
+            if (!initSpeechRecognition()) {
+                return;
+            }
+        }
+        
+        if (!isListening && !isProcessing) {
+            try {
+                recognition.start();
+                console.log('🎤 Starting voice recognition...');
+            } catch (e) {
+                console.log('Recognition already running');
+            }
+        }
+    }
+    
+    function stopListening() {
+        if (recognition && isListening) {
+            try {
+                recognition.stop();
+            } catch (e) {
+                console.log('Error stopping recognition:', e);
+            }
+        }
+    }
+    
+    function triggerDetection() {
+        if (isProcessing) {
+            console.log('Already processing, ignoring');
+            return;
+        }
+        
+        isProcessing = true;
+        updateUI('processing', '🔍 Analyzing image... Please wait.');
+        
+        stopListening();
+        
+        const processingAudio = document.getElementById('processing-audio');
+        if (processingAudio) {
+            processingAudio.currentTime = 0;
+            processingAudio.play().catch(e => console.log('Processing audio blocked:', e));
+        }
+        
+        setTimeout(() => {
+            const allButtons = document.querySelectorAll('button');
+            let detectBtn = null;
+            
+            allButtons.forEach(btn => {
+                if (btn.textContent && btn.textContent.trim() === 'Detect') {
+                    detectBtn = btn;
+                }
+            });
+            
+            if (detectBtn) {
+                console.log('🔘 Clicking detect button');
+                detectBtn.click();
+            } else {
+                console.error('Could not find detect button');
+                detectionComplete();
+            }
+        }, 100);
+    }
+    
+    function detectionComplete() {
+        console.log('✅ Detection complete');
+        isProcessing = false;
+        
+        setTimeout(() => {
+            updateUI('listening', '✅ Detection complete! Listening for next command...');
+            startListening();
+        }, 500);
+    }
+    
+    function playStartupAndBegin() {
+        const startupAudio = document.getElementById('startup-audio');
+        if (startupAudio) {
+            startupAudio.play()
+                .then(() => {
+                    console.log('🔊 Startup audio playing');
+                    startupAudio.onended = () => {
+                        console.log('🔊 Startup audio ended, beginning listening');
+                        startListening();
+                    };
+                })
+                .catch(e => {
+                    console.log('🔇 Auto-play blocked, starting without audio');
+                    startListening();
+                });
+        } else {
+            startListening();
+        }
+    }
+    
+    function handleFirstInteraction() {
+        if (!hasInteracted) {
+            hasInteracted = true;
+            console.log('👆 First interaction detected');
+            playStartupAndBegin();
+        }
+    }
+    
+    window.detectionComplete = detectionComplete;
+    window.noonvisionStart = playStartupAndBegin;
+    
+    function init() {
+        console.log('🚀 NoonVision initializing...');
+        
+        updateUI('paused', 'Click anywhere or speak to activate NoonVision');
+        
+        document.addEventListener('click', handleFirstInteraction, { once: false });
+        document.addEventListener('keydown', handleFirstInteraction, { once: false });
+        document.addEventListener('touchstart', handleFirstInteraction, { once: false });
+        
+        setTimeout(() => {
+            if (!hasInteracted) {
+                if (initSpeechRecognition()) {
+                    startListening();
+                    hasInteracted = true;
+                    
+                    const startupAudio = document.getElementById('startup-audio');
+                    if (startupAudio) {
+                        startupAudio.play().catch(() => {});
+                    }
+                }
+            }
+        }, 1500);
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        setTimeout(init, 500);
+    }
+})();
+</script>
 """
 
 # Build the Gradio interface
@@ -295,7 +549,7 @@ with gr.Blocks(
     </div>
     ''')
     
-    # Browser compatibility warning (hidden by default, shown if needed)
+    # Browser warning
     gr.HTML('''
     <div id="browser-warning" class="browser-warning">
         <strong>⚠️ Browser Compatibility:</strong> Voice recognition works best in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>. 
@@ -334,16 +588,13 @@ with gr.Blocks(
                 sources=["webcam"],
                 type="pil",
                 label="📷 Live Camera Feed",
-                streaming=True,
-                mirror_webcam=True,
-                elem_classes=["webcam-container"]
+                mirror_webcam=True
             )
         
         with gr.Column(scale=1):
             result_img = gr.Image(
                 type="pil",
-                label="🎯 Detection Results",
-                elem_classes=["result-image"]
+                label="🎯 Detection Results"
             )
             
             status_text = gr.Textbox(
@@ -361,296 +612,22 @@ with gr.Blocks(
     
     # Hidden detect button (triggered by JavaScript)
     with gr.Row(visible=False):
-        hidden_btn = gr.Button("Detect", elem_id="hidden-detect-btn")
+        hidden_btn = gr.Button("Detect")
     
-    # Audio elements and JavaScript
+    # Audio elements
     gr.HTML(f'''
-    <!-- Startup and processing audio -->
     <audio id="startup-audio" preload="auto">
         <source src="data:audio/mp3;base64,{startup_audio_base64}" type="audio/mp3">
     </audio>
     <audio id="processing-audio" preload="auto">
         <source src="data:audio/mp3;base64,{processing_audio_base64}" type="audio/mp3">
     </audio>
-    
-    <script>
-    (function() {{
-        let recognition = null;
-        let isProcessing = false;
-        let isListening = false;
-        let hasInteracted = false;
-        
-        const TRIGGER_PHRASES = ["detect", "what do you see", "what's in front", "identify", "scan", "look", "what is in front", "what's this", "what is this"];
-        
-        function containsTrigger(text) {{
-            const lowerText = text.toLowerCase();
-            return TRIGGER_PHRASES.some(phrase => lowerText.includes(phrase));
-        }}
-        
-        function updateUI(state, message) {{
-            const indicator = document.getElementById('listening-indicator');
-            const status = document.getElementById('status-display');
-            
-            if (indicator) {{
-                if (state === 'listening') {{
-                    indicator.className = 'listening-active';
-                    indicator.innerHTML = '🎤 <span style="color: #22c55e; font-weight: bold;">Listening...</span> Say "Detect" or "What do you see?"';
-                }} else if (state === 'processing') {{
-                    indicator.className = 'processing-active';
-                    indicator.innerHTML = '🔍 <span style="color: #3b82f6; font-weight: bold;">Processing...</span> Please wait';
-                }} else if (state === 'paused') {{
-                    indicator.className = 'listening-paused';
-                    indicator.innerHTML = '⏸️ <span style="color: #f59e0b;">Paused</span> - ' + message;
-                }} else if (state === 'error') {{
-                    indicator.className = 'listening-paused';
-                    indicator.innerHTML = '⚠️ <span style="color: #ef4444;">' + message + '</span>';
-                }}
-            }}
-            
-            if (status && message) {{
-                status.innerHTML = message;
-            }}
-        }}
-        
-        function initSpeechRecognition() {{
-            // Check browser support
-            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {{
-                console.error('Speech recognition not supported');
-                document.getElementById('browser-warning').classList.add('show');
-                updateUI('error', 'Speech recognition not supported. Please use Chrome or Edge browser.');
-                return false;
-            }}
-            
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = false;
-            recognition.lang = 'en-US';
-            recognition.maxAlternatives = 1;
-            
-            recognition.onstart = function() {{
-                isListening = true;
-                console.log('🎤 Voice recognition started');
-                if (!isProcessing) {{
-                    updateUI('listening', '🎤 Listening for voice commands...');
-                }}
-            }};
-            
-            recognition.onresult = function(event) {{
-                if (isProcessing) {{
-                    console.log('⏳ Already processing, ignoring input');
-                    return;
-                }}
-                
-                const last = event.results.length - 1;
-                const text = event.results[last][0].transcript;
-                const confidence = event.results[last][0].confidence;
-                
-                console.log('Heard:', text, 'Confidence:', confidence);
-                
-                const heardEl = document.getElementById('heard-text');
-                if (heardEl) {{
-                    heardEl.innerHTML = '🗣️ Heard: "' + text + '"';
-                }}
-                
-                if (containsTrigger(text)) {{
-                    console.log('🎯 Trigger word detected!');
-                    triggerDetection();
-                }}
-            }};
-            
-            recognition.onerror = function(event) {{
-                console.error('Speech recognition error:', event.error);
-                
-                if (event.error === 'not-allowed') {{
-                    updateUI('error', 'Microphone access denied. Please allow microphone permission and refresh the page.');
-                    document.getElementById('browser-warning').classList.add('show');
-                }} else if (event.error === 'no-speech') {{
-                    // Normal timeout, just restart
-                    if (!isProcessing) {{
-                        setTimeout(startListening, 100);
-                    }}
-                }} else if (event.error === 'audio-capture') {{
-                    updateUI('error', 'No microphone found. Please connect a microphone and refresh.');
-                }} else {{
-                    // Other errors - try to restart
-                    console.log('Restarting after error:', event.error);
-                    setTimeout(startListening, 1000);
-                }}
-            }};
-            
-            recognition.onend = function() {{
-                isListening = false;
-                console.log('🎤 Voice recognition ended');
-                
-                // Auto-restart if not processing
-                if (!isProcessing) {{
-                    setTimeout(startListening, 300);
-                }}
-            }};
-            
-            return true;
-        }}
-        
-        function startListening() {{
-            if (!recognition) {{
-                if (!initSpeechRecognition()) {{
-                    return;
-                }}
-            }}
-            
-            if (!isListening && !isProcessing) {{
-                try {{
-                    recognition.start();
-                    console.log('🎤 Starting voice recognition...');
-                }} catch (e) {{
-                    // Already started
-                    console.log('Recognition already running');
-                }}
-            }}
-        }}
-        
-        function stopListening() {{
-            if (recognition && isListening) {{
-                try {{
-                    recognition.stop();
-                }} catch (e) {{
-                    console.log('Error stopping recognition:', e);
-                }}
-            }}
-        }}
-        
-        function triggerDetection() {{
-            if (isProcessing) {{
-                console.log('Already processing, ignoring');
-                return;
-            }}
-            
-            isProcessing = true;
-            updateUI('processing', '🔍 Analyzing image... Please wait.');
-            
-            // Stop listening during processing
-            stopListening();
-            
-            // Play processing sound
-            const processingAudio = document.getElementById('processing-audio');
-            if (processingAudio) {{
-                processingAudio.currentTime = 0;
-                processingAudio.play().catch(e => console.log('Processing audio blocked:', e));
-            }}
-            
-            // Find and click the hidden Gradio button
-            setTimeout(() => {{
-                // Try multiple selectors to find the button
-                let detectBtn = document.querySelector('#hidden-detect-btn');
-                if (!detectBtn) {{
-                    detectBtn = document.querySelector('button#hidden-detect-btn');
-                }}
-                if (!detectBtn) {{
-                    // Look for the button inside Gradio's structure
-                    const allButtons = document.querySelectorAll('button');
-                    allButtons.forEach(btn => {{
-                        if (btn.id === 'hidden-detect-btn' || (btn.textContent && btn.textContent.includes('Detect'))) {{
-                            detectBtn = btn;
-                        }}
-                    }});
-                }}
-                
-                if (detectBtn) {{
-                    console.log('🔘 Clicking detect button');
-                    detectBtn.click();
-                }} else {{
-                    console.error('Could not find detect button');
-                    detectionComplete();
-                }}
-            }}, 100);
-        }}
-        
-        function detectionComplete() {{
-            console.log('✅ Detection complete');
-            isProcessing = false;
-            
-            // Resume listening after audio finishes (give time for result audio)
-            setTimeout(() => {{
-                updateUI('listening', '✅ Detection complete! Listening for next command...');
-                startListening();
-            }}, 500);
-        }}
-        
-        function playStartupAndBegin() {{
-            const startupAudio = document.getElementById('startup-audio');
-            if (startupAudio) {{
-                startupAudio.play()
-                    .then(() => {{
-                        console.log('🔊 Startup audio playing');
-                        // Start listening after startup audio
-                        startupAudio.onended = () => {{
-                            console.log('🔊 Startup audio ended, beginning listening');
-                            startListening();
-                        }};
-                    }})
-                    .catch(e => {{
-                        console.log('🔇 Auto-play blocked, starting without audio');
-                        startListening();
-                    }});
-            }} else {{
-                startListening();
-            }}
-        }}
-        
-        // Handle first user interaction (needed for audio autoplay policy)
-        function handleFirstInteraction() {{
-            if (!hasInteracted) {{
-                hasInteracted = true;
-                console.log('👆 First interaction detected');
-                playStartupAndBegin();
-            }}
-        }}
-        
-        // Expose for Gradio callback
-        window.detectionComplete = detectionComplete;
-        window.noonvisionStart = playStartupAndBegin;
-        
-        // Initialize on page load
-        function init() {{
-            console.log('🚀 NoonVision initializing...');
-            
-            updateUI('paused', 'Click anywhere or speak to activate NoonVision');
-            
-            // Set up first interaction handlers
-            document.addEventListener('click', handleFirstInteraction, {{ once: false }});
-            document.addEventListener('keydown', handleFirstInteraction, {{ once: false }});
-            document.addEventListener('touchstart', handleFirstInteraction, {{ once: false }});
-            
-            // Try to start immediately (may work if user has interacted before)
-            setTimeout(() => {{
-                if (!hasInteracted) {{
-                    // Try to init speech recognition to prompt for permission
-                    if (initSpeechRecognition()) {{
-                        startListening();
-                        hasInteracted = true;
-                        
-                        // Try to play startup audio
-                        const startupAudio = document.getElementById('startup-audio');
-                        if (startupAudio) {{
-                            startupAudio.play().catch(() => {{}});
-                        }}
-                    }}
-                }}
-            }}, 1500);
-        }}
-        
-        // Wait for DOM
-        if (document.readyState === 'loading') {{
-            document.addEventListener('DOMContentLoaded', init);
-        }} else {{
-            setTimeout(init, 500);
-        }}
-    }})();
-    </script>
     ''')
     
-    # Event handler for detection button
+    # JavaScript
+    gr.HTML(JS_CODE)
+    
+    # Event handler
     hidden_btn.click(
         fn=detect_objects,
         inputs=webcam,
