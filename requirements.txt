@@ -1,19 +1,8 @@
 # NoonVision Dependencies
-# Last updated: 2025-12-30
-
-# Core UI framework - using latest stable version
-gradio==5.9.1
-
-# PyTorch for ML inference
-torch>=2.1.0
-torchvision>=0.16.0
-
-# Object detection
-ultralytics>=8.1.0
-
-# Image processing
+gradio==4.44.0
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
 numpy>=1.24.0
-Pillow>=10.0.0
-
-# Text-to-speech
-gTTS>=2.4.0
+Pillow>=9.0.0
+gTTS>=2.3.0
