@@ -22,7 +22,6 @@ print("🚀 Loading NoonVision...")
 model = None
 try:
     model = YOLO("yolov8m.pt")
-    # Warm up
     dummy = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
     _ = model(dummy, verbose=False)
     print("✅ YOLOv8m loaded")
@@ -40,13 +39,21 @@ def generate_audio(text):
         print(f"Audio error: {e}")
         return None
 
-def detect_objects(image):
-    """Main detection function"""
+def save_frame(image, current_state):
+    """Save the latest webcam frame to state"""
+    if image is not None:
+        return image
+    return current_state
+
+def detect_objects(stored_image):
+    """Main detection function using stored frame"""
     
-    # Check inputs
-    if image is None:
+    print(f"[DEBUG] detect_objects called, image type: {type(stored_image)}")
+    
+    if stored_image is None:
+        print("[DEBUG] No stored image!")
         text = "I cannot see anything. Please make sure the camera is working. Say detect when ready."
-        return None, generate_audio(text), "⚠️ No image"
+        return None, generate_audio(text), "⚠️ No image captured - make sure camera is active"
     
     if model is None:
         text = "Detection system not ready. Please wait and try again."
@@ -56,12 +63,14 @@ def detect_objects(image):
         start = time.time()
         
         # Convert to numpy if needed
-        if isinstance(image, Image.Image):
-            img_pil = image.copy()
-            img_np = np.array(image)
+        if isinstance(stored_image, Image.Image):
+            img_pil = stored_image.copy()
+            img_np = np.array(stored_image)
         else:
-            img_np = image
-            img_pil = Image.fromarray(image)
+            img_np = np.array(stored_image) if not isinstance(stored_image, np.ndarray) else stored_image
+            img_pil = Image.fromarray(img_np.astype('uint8'))
+        
+        print(f"[DEBUG] Image shape: {img_np.shape}")
         
         # Run detection
         results = model(img_np, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)[0]
@@ -86,7 +95,6 @@ def detect_objects(image):
             conf = confidences[i]
             detected.append(label)
             
-            # Draw box
             draw.rectangle([x1, y1, x2, y2], outline=BOX_COLOR, width=BOX_WIDTH)
             text_str = f"{label} {conf:.2f}"
             bbox = draw.textbbox((x1, y1-25), text_str, font=font)
@@ -120,10 +128,11 @@ def detect_objects(image):
         if detected:
             status += f": {', '.join(set(detected))}"
         
+        print(f"[DEBUG] Detection complete: {status}")
         return img_pil, audio, status
         
     except Exception as e:
-        print(f"Detection error: {e}")
+        print(f"[DEBUG] Detection error: {e}")
         import traceback
         traceback.print_exc()
         text = "Something went wrong. Please try again. Say detect when ready."
@@ -163,6 +172,9 @@ CSS = """
 # Build interface
 with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
     
+    # State to store latest frame
+    frame_state = gr.State(value=None)
+    
     # Header
     gr.HTML('''
     <div style="text-align:center; padding:20px; background:linear-gradient(135deg,#667eea,#764ba2); color:white; border-radius:12px; margin-bottom:15px;">
@@ -179,37 +191,43 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
     ''')
     
     # Status displays
-    status_html = gr.HTML('<div id="status-box" class="status-listening">🎤 Initializing...</div>')
+    gr.HTML('<div id="status-box" class="status-listening">🎤 Initializing...</div>')
     gr.HTML('<div id="heard-box">🗣️ Waiting for voice...</div>')
     
     # Main layout
     with gr.Row():
         with gr.Column():
-            # Webcam input
             webcam = gr.Image(
                 sources=["webcam"], 
                 type="pil", 
-                label="📷 Camera",
-                streaming=False,
+                label="📷 Camera - Live Feed",
+                streaming=True,  # Enable streaming to continuously get frames
                 mirror_webcam=True
             )
         
         with gr.Column():
             result_img = gr.Image(type="pil", label="🎯 Detection Results")
-            status_txt = gr.Textbox(label="Status", value="Ready", lines=2)
+            status_txt = gr.Textbox(label="Status", value="Ready - Say 'Detect'", lines=2)
             audio_out = gr.Audio(type="filepath", label="🔊 Audio", autoplay=True)
     
-    # Hidden button for triggering detection
-    detect_btn = gr.Button("🔍 Detect", visible=True, variant="primary", size="lg")
+    # Detect button
+    detect_btn = gr.Button("🔍 Detect Objects", variant="primary", size="lg", elem_id="detect-btn")
     
-    # Event handler
+    # When webcam streams, save latest frame to state
+    webcam.stream(
+        fn=save_frame,
+        inputs=[webcam, frame_state],
+        outputs=frame_state
+    )
+    
+    # Detect button uses the stored frame
     detect_btn.click(
         fn=detect_objects,
-        inputs=webcam,
+        inputs=frame_state,
         outputs=[result_img, audio_out, status_txt]
     )
     
-    # JavaScript for voice control
+    # Audio elements and JavaScript
     gr.HTML(f'''
     <audio id="startup-audio" src="data:audio/mp3;base64,{startup_b64}"></audio>
     <audio id="processing-audio" src="data:audio/mp3;base64,{processing_b64}"></audio>
@@ -238,7 +256,7 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
         
         function initSpeech() {{
             if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {{
-                setStatus('⚠️ Use Chrome or Edge for voice', 'status-processing');
+                setStatus('⚠️ Use Chrome or Edge for voice commands', 'status-processing');
                 return false;
             }}
             
@@ -280,7 +298,7 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
         }}
         
         function startListening() {{
-            if (!recognition) {{ if (!initSpeech()) return; }}
+            if (!recognition && !initSpeech()) return;
             if (!isListening && !isProcessing) {{
                 try {{ recognition.start(); }} catch(e) {{}}
             }}
@@ -296,35 +314,34 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
             if (isProcessing) return;
             isProcessing = true;
             
-            setStatus('🔍 <b>Processing...</b> Please wait', 'status-processing');
+            setStatus('🔍 <b>Processing...</b> Analyzing image...', 'status-processing');
             stopListening();
             
             // Play processing sound
             const pa = document.getElementById('processing-audio');
             if (pa) {{ pa.currentTime = 0; pa.play().catch(()=>{{}}); }}
             
-            // Click the detect button
+            // Click detect button
             setTimeout(() => {{
-                const btn = document.querySelector('button.primary');
+                const btn = document.getElementById('detect-btn');
                 if (btn) {{
                     btn.click();
-                    console.log('Detect clicked');
+                    console.log('✅ Detect button clicked');
                 }}
                 
-                // Resume after delay
+                // Resume listening after processing
                 setTimeout(() => {{
                     isProcessing = false;
-                    setStatus('🎤 <b>Listening...</b> Say "Detect"', 'status-listening');
+                    setStatus('🎤 <b>Listening...</b> Say "Detect" for next scan', 'status-listening');
                     startListening();
                 }}, 5000);
-            }}, 200);
+            }}, 100);
         }}
         
         // Initialize
         function init() {{
-            console.log('NoonVision init');
+            console.log('🚀 NoonVision initializing...');
             
-            // Play startup audio
             const sa = document.getElementById('startup-audio');
             if (sa) {{
                 sa.play().then(() => {{
@@ -339,14 +356,19 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
             }}
         }}
         
-        // Start after page loads
+        // Start when page loads
         if (document.readyState === 'loading') {{
-            document.addEventListener('DOMContentLoaded', () => setTimeout(init, 1000));
+            document.addEventListener('DOMContentLoaded', () => setTimeout(init, 1500));
         }} else {{
-            setTimeout(init, 1000);
+            setTimeout(init, 1500);
         }}
         
-        // Also allow manual trigger
+        // Also init on first click (for audio autoplay)
+        document.addEventListener('click', function firstClick() {{
+            init();
+            document.removeEventListener('click', firstClick);
+        }}, {{ once: true }});
+        
         window.doDetect = doDetect;
     }})();
     </script>
@@ -359,6 +381,6 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
     </div>
     ''')
 
-# Launch
+# Launch without SSR
 if __name__ == "__main__":
     demo.launch(ssr_mode=False)
