@@ -1,4 +1,4 @@
-vimport os
+import os
 # Disable SSR mode which can cause API issues
 os.environ["GRADIO_SSR_MODE"] = "false"
 
