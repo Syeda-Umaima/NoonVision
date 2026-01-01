@@ -239,7 +239,7 @@ with gr.Blocks(css=CSS, title="NoonVision") as demo:
     
     with gr.Row():
         with gr.Column():
-            inp_img = gr.Image(source="webcam", type="pil", label="📷 Camera")
+            inp_img = gr.Image(sources=["webcam"], type="pil", label="📷 Camera")
         with gr.Column():
             out_img = gr.Image(type="pil", label="🎯 Results")
             out_status = gr.Textbox(label="Status", value="Ready")
