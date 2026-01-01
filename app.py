@@ -1,6 +1,30 @@
-import os
-# Disable SSR mode which can cause API issues
-os.environ["GRADIO_SSR_MODE"] = "false"
+# Monkey-patch huggingface_hub for Gradio 4.x compatibility
+import sys
+from unittest.mock import MagicMock
+
+# Create a fake HfFolder class if it doesn't exist
+try:
+    from huggingface_hub import HfFolder
+except ImportError:
+    # HfFolder was removed in newer huggingface_hub versions
+    # Create a mock that Gradio can use
+    import huggingface_hub
+    
+    class FakeHfFolder:
+        @classmethod
+        def get_token(cls):
+            return None
+        
+        @classmethod
+        def save_token(cls, token):
+            pass
+        
+        @classmethod
+        def delete_token(cls):
+            pass
+    
+    huggingface_hub.HfFolder = FakeHfFolder
+    sys.modules['huggingface_hub'].HfFolder = FakeHfFolder
 
 import gradio as gr
 import numpy as np
@@ -9,6 +33,7 @@ from PIL import Image, ImageDraw, ImageFont
 from gtts import gTTS
 import time
 from collections import Counter
+import os
 import base64
 import tempfile
 
@@ -59,8 +84,8 @@ def detect(img):
     
     if img is None:
         print("[DETECT] No image!")
-        audio = make_audio("No image captured. Please click the camera button first to take a photo, then click detect.")
-        return None, audio, "⚠️ No image - click 📷 on camera first"
+        audio = make_audio("No image captured. Please click the camera to take a photo first.")
+        return None, audio, "⚠️ No image - capture first"
     
     if model is None:
         audio = make_audio("Model not ready. Please wait.")
@@ -145,7 +170,7 @@ def detect(img):
 
 # ===== STARTUP AUDIO =====
 print("🔊 Creating audio...")
-STARTUP_B64 = audio_to_b64("NoonVision ready. Click the camera button to capture, then say detect.")
+STARTUP_B64 = audio_to_b64("NoonVision ready. Capture an image and say detect.")
 PROCESSING_B64 = audio_to_b64("Processing.")
 print("✅ Audio ready")
 
@@ -154,10 +179,8 @@ CSS = """
 .status-box { padding:15px; border-radius:10px; margin:10px 0; font-size:16px; }
 .listening { background:rgba(34,197,94,0.15); border-left:4px solid #22c55e; animation:pulse 2s infinite; }
 .processing { background:rgba(59,130,246,0.15); border-left:4px solid #3b82f6; }
-.paused { background:rgba(249,115,22,0.15); border-left:4px solid #f97316; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
 #heard { background:#fefce8; padding:10px; border-radius:8px; text-align:center; border-left:4px solid #eab308; margin:5px 0; }
-button.primary { font-size: 18px !important; }
 """
 
 # ===== JAVASCRIPT =====
@@ -242,35 +265,19 @@ JS = f"""
     const ps=document.getElementById('snd-proc');
     if(ps){{ ps.currentTime=0; ps.play().catch(()=>{{}}); }}
     
-    // Wait a moment then find and click the detect button
     await new Promise(r=>setTimeout(r,300));
     
-    // Find the detect button and click it
+    // Find and click detect button
     const btns = document.querySelectorAll('button');
-    let detectBtn = null;
     for(const btn of btns){{
-      const txt = (btn.innerText||btn.textContent||'').toLowerCase();
+      const txt = (btn.innerText||'').toLowerCase();
       if(txt.includes('detect')){{
-        detectBtn = btn;
+        btn.click();
         break;
       }}
     }}
     
-    if(detectBtn){{
-      console.log('Clicking detect button');
-      // Simulate proper click
-      detectBtn.focus();
-      detectBtn.dispatchEvent(new MouseEvent('click', {{
-        bubbles: true,
-        cancelable: true,
-        view: window
-      }}));
-    }}else{{
-      console.error('Detect button not found');
-      setBox('⚠️ Click Detect button manually','paused');
-    }}
-    
-    // Wait for audio to finish, then resume
+    // Resume after audio
     await new Promise(r=>setTimeout(r,6000));
     busy=false;
     setBox('🎤 <b>Listening...</b> Say "Detect"','listening');
@@ -282,7 +289,6 @@ JS = f"""
     started=true;
     console.log('🚀 NoonVision ready');
     
-    // Play startup audio
     const sa=document.getElementById('snd-start');
     if(sa){{
       sa.play().then(()=>{{
@@ -293,24 +299,7 @@ JS = f"""
     }}
   }}
   
-  // Wait for Gradio to be fully loaded
-  function waitForGradio(){{
-    // Check if Gradio app is ready
-    if(document.querySelector('button')){{
-      setTimeout(init, 500);
-    }}else{{
-      setTimeout(waitForGradio, 500);
-    }}
-  }}
-  
-  // Start after page loads
-  if(document.readyState==='loading'){{
-    document.addEventListener('DOMContentLoaded', ()=>setTimeout(waitForGradio,1000));
-  }}else{{
-    setTimeout(waitForGradio,1000);
-  }}
-  
-  // Also on click
+  setTimeout(init,2000);
   document.addEventListener('click',function f(){{
     document.removeEventListener('click',f);
     init();
@@ -335,36 +324,26 @@ with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
     
     gr.HTML("""
     <div style="background:#ecfdf5;padding:15px;border-radius:10px;border:2px solid #22c55e;margin-bottom:15px">
-        <b>🎤 How to Use:</b><br>
-        1. Click 📷 on camera to capture<br>
-        2. Say "Detect" (or click button)<br>
-        3. Listen to results<br>
-        4. Click ✕ to clear, then repeat!
+        <b>🎤 How to Use:</b> Capture image → Say "Detect" → Listen → Repeat!
     </div>
     """)
     
-    gr.HTML('<div id="status-box" class="status-box listening">🎤 Starting up...</div>')
+    gr.HTML('<div id="status-box" class="status-box listening">🎤 Starting...</div>')
     gr.HTML('<div id="heard">🗣️ Waiting for voice...</div>')
     
     with gr.Row():
         with gr.Column():
-            cam = gr.Image(
-                sources=["webcam"], 
-                type="pil", 
-                label="📷 Camera (click 📷 to capture)",
-                mirror_webcam=True
-            )
+            cam = gr.Image(sources=["webcam"], type="pil", label="📷 Camera")
         with gr.Column():
-            out_img = gr.Image(type="pil", label="🎯 Detection Results")
-            out_status = gr.Textbox(label="Status", value="Ready", interactive=False)
+            out_img = gr.Image(type="pil", label="🎯 Results")
+            out_status = gr.Textbox(label="Status", value="Ready")
             out_audio = gr.Audio(type="filepath", label="🔊 Audio", autoplay=True)
     
     btn = gr.Button("🔍 Detect Objects", variant="primary", size="lg")
     btn.click(fn=detect, inputs=[cam], outputs=[out_img, out_audio, out_status])
     
-    gr.HTML('<div style="text-align:center;color:#666;padding:10px;margin-top:10px">🎯 80+ objects • ⚡ Fast • 🌐 Chrome/Edge</div>')
+    gr.HTML('<div style="text-align:center;color:#666;padding:10px">🎯 80+ objects • ⚡ Fast • 🌐 Chrome/Edge</div>')
 
 # ===== LAUNCH =====
 if __name__ == "__main__":
-    demo.queue()
     demo.launch()
