@@ -1,30 +1,16 @@
-# Monkey-patch huggingface_hub for Gradio 4.x compatibility
-import sys
-from unittest.mock import MagicMock
-
-# Create a fake HfFolder class if it doesn't exist
+# Fix for HfFolder import error in newer huggingface_hub
 try:
     from huggingface_hub import HfFolder
 except ImportError:
-    # HfFolder was removed in newer huggingface_hub versions
-    # Create a mock that Gradio can use
     import huggingface_hub
-    
-    class FakeHfFolder:
+    class HfFolder:
         @classmethod
-        def get_token(cls):
-            return None
-        
+        def get_token(cls): return None
+        @classmethod  
+        def save_token(cls, token): pass
         @classmethod
-        def save_token(cls, token):
-            pass
-        
-        @classmethod
-        def delete_token(cls):
-            pass
-    
-    huggingface_hub.HfFolder = FakeHfFolder
-    sys.modules['huggingface_hub'].HfFolder = FakeHfFolder
+        def delete_token(cls): pass
+    huggingface_hub.HfFolder = HfFolder
 
 import gradio as gr
 import numpy as np
@@ -41,11 +27,11 @@ print("=" * 50)
 print("🚀 NoonVision Starting...")
 print("=" * 50)
 
-# ===== CONFIGURATION =====
+# Configuration
 CONF_THRESHOLD = 0.30
 IMG_SIZE = 640
 
-# ===== LOAD YOLO MODEL =====
+# Load YOLO model
 model = None
 try:
     model = YOLO("yolov8m.pt")
@@ -55,20 +41,18 @@ try:
 except Exception as e:
     print(f"❌ Model error: {e}")
 
-# ===== AUDIO FUNCTIONS =====
 def make_audio(text):
-    """Create audio file from text"""
+    """Create TTS audio file"""
     try:
         fd, path = tempfile.mkstemp(suffix='.mp3')
         os.close(fd)
         gTTS(text=text, lang='en', slow=False).save(path)
         return path
-    except Exception as e:
-        print(f"Audio error: {e}")
+    except:
         return None
 
-def audio_to_b64(text):
-    """Create audio and convert to base64"""
+def audio_b64(text):
+    """Create audio as base64"""
     path = make_audio(text)
     if path and os.path.exists(path):
         with open(path, 'rb') as f:
@@ -77,45 +61,42 @@ def audio_to_b64(text):
         return b64
     return ""
 
-# ===== DETECTION FUNCTION =====
 def detect(img):
-    """Run object detection on image"""
-    print(f"\n[DETECT] Called, image type: {type(img)}")
+    """Main detection function"""
+    print(f"[DETECT] Input: {type(img)}")
     
     if img is None:
-        print("[DETECT] No image!")
-        audio = make_audio("No image captured. Please click the camera to take a photo first.")
-        return None, audio, "⚠️ No image - capture first"
+        audio = make_audio("No image. Please capture a photo first, then click detect.")
+        return None, audio, "⚠️ No image captured"
     
     if model is None:
-        audio = make_audio("Model not ready. Please wait.")
+        audio = make_audio("Model not ready.")
         return None, audio, "⚠️ Model not loaded"
     
     try:
         t0 = time.time()
         
-        # Convert to numpy
+        # Convert image
         if hasattr(img, 'convert'):
-            pil_img = img.convert('RGB')
-            np_img = np.array(pil_img)
+            pil = img.convert('RGB')
+            arr = np.array(pil)
         else:
-            np_img = np.array(img)
-            pil_img = Image.fromarray(np_img).convert('RGB')
+            arr = np.array(img)
+            pil = Image.fromarray(arr).convert('RGB')
         
-        print(f"[DETECT] Image shape: {np_img.shape}")
+        print(f"[DETECT] Shape: {arr.shape}")
         
         # Run YOLO
-        results = model(np_img, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)[0]
+        res = model(arr, imgsz=IMG_SIZE, conf=CONF_THRESHOLD, verbose=False)[0]
+        boxes = res.boxes.xyxy.cpu().numpy()
+        confs = res.boxes.conf.cpu().numpy()
+        cls_ids = res.boxes.cls.cpu().numpy()
+        names = res.names
         
-        boxes = results.boxes.xyxy.cpu().numpy()
-        confs = results.boxes.conf.cpu().numpy()
-        cls_ids = results.boxes.cls.cpu().numpy()
-        names = results.names
-        
-        print(f"[DETECT] Found {len(boxes)} objects")
+        print(f"[DETECT] Found: {len(boxes)}")
         
         # Draw boxes
-        draw = ImageDraw.Draw(pil_img)
+        draw = ImageDraw.Draw(pil)
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
         except:
@@ -136,7 +117,7 @@ def detect(img):
         
         # Create speech
         if not objects:
-            speech = "I cannot see anything clearly in front of the camera. Please try adjusting the camera or lighting."
+            speech = "I cannot see anything clearly. Try adjusting the camera."
         else:
             counts = Counter(objects)
             parts = []
@@ -150,7 +131,7 @@ def detect(img):
             else:
                 speech = f"I can see {', '.join(parts[:-1])}, and {parts[-1]}."
         
-        speech += " ... Listening. Say detect when ready."
+        speech += " Say detect when ready."
         audio = make_audio(speech)
         
         dt = time.time() - t0
@@ -159,191 +140,114 @@ def detect(img):
             status += f": {', '.join(set(objects))}"
         
         print(f"[DETECT] Done: {status}")
-        return pil_img, audio, status
+        return pil, audio, status
         
     except Exception as e:
         print(f"[DETECT] Error: {e}")
         import traceback
         traceback.print_exc()
-        audio = make_audio("Error occurred. Please try again.")
+        audio = make_audio("Error. Please try again.")
         return None, audio, f"❌ {e}"
 
-# ===== STARTUP AUDIO =====
+# Pre-generate audio
 print("🔊 Creating audio...")
-STARTUP_B64 = audio_to_b64("NoonVision ready. Capture an image and say detect.")
-PROCESSING_B64 = audio_to_b64("Processing.")
+STARTUP_B64 = audio_b64("NoonVision ready. Capture an image and say detect.")
+PROC_B64 = audio_b64("Processing.")
 print("✅ Audio ready")
 
-# ===== CSS =====
+# CSS
 CSS = """
-.status-box { padding:15px; border-radius:10px; margin:10px 0; font-size:16px; }
-.listening { background:rgba(34,197,94,0.15); border-left:4px solid #22c55e; animation:pulse 2s infinite; }
-.processing { background:rgba(59,130,246,0.15); border-left:4px solid #3b82f6; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
-#heard { background:#fefce8; padding:10px; border-radius:8px; text-align:center; border-left:4px solid #eab308; margin:5px 0; }
+.status-box{padding:15px;border-radius:10px;margin:10px 0;font-size:16px}
+.listening{background:rgba(34,197,94,0.15);border-left:4px solid #22c55e;animation:pulse 2s infinite}
+.processing{background:rgba(59,130,246,0.15);border-left:4px solid #3b82f6}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}
+#heard{background:#fefce8;padding:10px;border-radius:8px;text-align:center;border-left:4px solid #eab308;margin:5px 0}
+footer{display:none!important}
 """
 
-# ===== JAVASCRIPT =====
+# JavaScript
 JS = f"""
 <audio id="snd-start" src="data:audio/mp3;base64,{STARTUP_B64}"></audio>
-<audio id="snd-proc" src="data:audio/mp3;base64,{PROCESSING_B64}"></audio>
+<audio id="snd-proc" src="data:audio/mp3;base64,{PROC_B64}"></audio>
 <script>
 (function(){{
-  let recog=null, busy=false, listening=false, started=false;
-  const triggers=["detect","what do you see","what's in front","identify","scan","look"];
-  
-  function hasTrig(t){{ return triggers.some(x=>t.toLowerCase().includes(x)); }}
-  
-  function setBox(h,c){{
-    const e=document.getElementById('status-box');
-    if(e){{ e.innerHTML=h; e.className='status-box '+c; }}
-  }}
-  
-  function setHeard(t){{
-    const e=document.getElementById('heard');
-    if(e) e.innerHTML='🗣️ Heard: "'+t+'"';
-  }}
-  
-  function initRec(){{
-    if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){{
-      setBox('⚠️ Use Chrome or Edge for voice','processing');
-      return false;
-    }}
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    recog=new SR();
-    recog.continuous=true;
-    recog.interimResults=false;
-    recog.lang='en-US';
-    
-    recog.onstart=()=>{{
-      listening=true;
-      if(!busy) setBox('🎤 <b>Listening...</b> Say "Detect"','listening');
-    }};
-    
-    recog.onresult=(e)=>{{
-      if(busy)return;
-      const t=e.results[e.results.length-1][0].transcript;
-      console.log('Heard:',t);
-      setHeard(t);
-      if(hasTrig(t)) doDetect();
-    }};
-    
-    recog.onerror=(e)=>{{
-      console.log('Recog error:',e.error);
-      listening=false;
-      if(e.error!=='no-speech'&&e.error!=='aborted') setTimeout(startRec,1000);
-    }};
-    
-    recog.onend=()=>{{
-      listening=false;
-      if(!busy) setTimeout(startRec,300);
-    }};
-    
-    return true;
-  }}
-  
-  function startRec(){{
-    if(!recog&&!initRec())return;
-    if(!listening&&!busy){{
-      try{{ recog.start(); }}catch(e){{}}
-    }}
-  }}
-  
-  function stopRec(){{
-    if(recog&&listening){{
-      try{{ recog.stop(); }}catch(e){{}}
-    }}
-  }}
-  
-  async function doDetect(){{
-    if(busy)return;
-    busy=true;
-    setBox('🔍 <b>Processing...</b>','processing');
-    stopRec();
-    
-    // Play processing sound
-    const ps=document.getElementById('snd-proc');
-    if(ps){{ ps.currentTime=0; ps.play().catch(()=>{{}}); }}
-    
-    await new Promise(r=>setTimeout(r,300));
-    
-    // Find and click detect button
-    const btns = document.querySelectorAll('button');
-    for(const btn of btns){{
-      const txt = (btn.innerText||'').toLowerCase();
-      if(txt.includes('detect')){{
-        btn.click();
-        break;
-      }}
-    }}
-    
-    // Resume after audio
-    await new Promise(r=>setTimeout(r,6000));
-    busy=false;
-    setBox('🎤 <b>Listening...</b> Say "Detect"','listening');
-    startRec();
-  }}
-  
-  function init(){{
-    if(started)return;
-    started=true;
-    console.log('🚀 NoonVision ready');
-    
-    const sa=document.getElementById('snd-start');
-    if(sa){{
-      sa.play().then(()=>{{
-        sa.onended=()=>{{ initRec(); startRec(); }};
-      }}).catch(()=>{{ initRec(); startRec(); }});
-    }}else{{
-      initRec(); startRec();
-    }}
-  }}
-  
-  setTimeout(init,2000);
-  document.addEventListener('click',function f(){{
-    document.removeEventListener('click',f);
-    init();
-  }});
-  
-  window.doDetect=doDetect;
+let recog,busy=false,listening=false,started=false;
+const trig=["detect","what do you see","identify","scan","look"];
+
+function hasTrig(t){{return trig.some(x=>t.toLowerCase().includes(x))}}
+function setBox(h,c){{const e=document.getElementById('status-box');if(e){{e.innerHTML=h;e.className='status-box '+c}}}}
+function setHeard(t){{const e=document.getElementById('heard');if(e)e.innerHTML='🗣️ "'+t+'"'}}
+
+function initRec(){{
+  if(!('webkitSpeechRecognition'in window)&&!('SpeechRecognition'in window)){{setBox('⚠️ Use Chrome/Edge','processing');return false}}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  recog=new SR();recog.continuous=true;recog.interimResults=false;recog.lang='en-US';
+  recog.onstart=()=>{{listening=true;if(!busy)setBox('🎤 <b>Listening...</b> Say "Detect"','listening')}};
+  recog.onresult=(e)=>{{if(busy)return;const t=e.results[e.results.length-1][0].transcript;console.log('Heard:',t);setHeard(t);if(hasTrig(t))doDetect()}};
+  recog.onerror=(e)=>{{listening=false;if(e.error!=='no-speech'&&e.error!=='aborted')setTimeout(startRec,1000)}};
+  recog.onend=()=>{{listening=false;if(!busy)setTimeout(startRec,300)}};
+  return true
+}}
+
+function startRec(){{if(!recog&&!initRec())return;if(!listening&&!busy)try{{recog.start()}}catch(e){{}}}}
+function stopRec(){{if(recog&&listening)try{{recog.stop()}}catch(e){{}}}}
+
+function doDetect(){{
+  if(busy)return;busy=true;
+  setBox('🔍 <b>Processing...</b>','processing');
+  stopRec();
+  const ps=document.getElementById('snd-proc');
+  if(ps){{ps.currentTime=0;ps.play().catch(()=>{{}})}}
+  setTimeout(()=>{{
+    const btns=document.querySelectorAll('button');
+    for(const b of btns){{if((b.innerText||'').toLowerCase().includes('detect')){{b.click();break}}}}
+    setTimeout(()=>{{busy=false;setBox('🎤 <b>Listening...</b> Say "Detect"','listening');startRec()}},6000)
+  }},300)
+}}
+
+function init(){{
+  if(started)return;started=true;
+  const sa=document.getElementById('snd-start');
+  if(sa)sa.play().then(()=>{{sa.onended=()=>{{initRec();startRec()}}}}).catch(()=>{{initRec();startRec()}});
+  else{{initRec();startRec()}}
+}}
+
+setTimeout(init,2000);
+document.addEventListener('click',function f(){{document.removeEventListener('click',f);init()}});
+window.doDetect=doDetect;
 }})();
 </script>
 """
 
-# ===== BUILD UI =====
-with gr.Blocks(title="NoonVision", theme=gr.themes.Soft(), css=CSS) as demo:
-    
+# Header HTML
+HEADER = """
+<div style="text-align:center;padding:20px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border-radius:12px;margin-bottom:15px">
+<h1 style="margin:0">🦾 NoonVision</h1>
+<p style="margin:5px 0;opacity:0.9">Hands-Free AI Vision Assistant</p>
+</div>
+<div style="background:#ecfdf5;padding:15px;border-radius:10px;border:2px solid #22c55e;margin-bottom:15px">
+<b>🎤 How to Use:</b> Capture image → Say "Detect" → Listen → Repeat!
+</div>
+<div id="status-box" class="status-box listening">🎤 Starting...</div>
+<div id="heard">🗣️ Waiting for voice...</div>
+"""
+
+# Build interface using gr.Interface (simpler, avoids schema bugs)
+with gr.Blocks(css=CSS, title="NoonVision") as demo:
     gr.HTML(JS)
-    
-    gr.HTML("""
-    <div style="text-align:center;padding:20px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border-radius:12px;margin-bottom:15px">
-        <h1 style="margin:0">🦾 NoonVision</h1>
-        <p style="margin:5px 0;opacity:0.9">Hands-Free AI Vision Assistant</p>
-    </div>
-    """)
-    
-    gr.HTML("""
-    <div style="background:#ecfdf5;padding:15px;border-radius:10px;border:2px solid #22c55e;margin-bottom:15px">
-        <b>🎤 How to Use:</b> Capture image → Say "Detect" → Listen → Repeat!
-    </div>
-    """)
-    
-    gr.HTML('<div id="status-box" class="status-box listening">🎤 Starting...</div>')
-    gr.HTML('<div id="heard">🗣️ Waiting for voice...</div>')
+    gr.HTML(HEADER)
     
     with gr.Row():
         with gr.Column():
-            cam = gr.Image(sources=["webcam"], type="pil", label="📷 Camera")
+            inp_img = gr.Image(source="webcam", type="pil", label="📷 Camera")
         with gr.Column():
             out_img = gr.Image(type="pil", label="🎯 Results")
             out_status = gr.Textbox(label="Status", value="Ready")
             out_audio = gr.Audio(type="filepath", label="🔊 Audio", autoplay=True)
     
-    btn = gr.Button("🔍 Detect Objects", variant="primary", size="lg")
-    btn.click(fn=detect, inputs=[cam], outputs=[out_img, out_audio, out_status])
+    btn = gr.Button("🔍 Detect Objects", variant="primary")
+    btn.click(fn=detect, inputs=inp_img, outputs=[out_img, out_audio, out_status])
     
     gr.HTML('<div style="text-align:center;color:#666;padding:10px">🎯 80+ objects • ⚡ Fast • 🌐 Chrome/Edge</div>')
 
-# ===== LAUNCH =====
-if __name__ == "__main__":
-    demo.launch()
+demo.launch()

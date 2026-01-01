@@ -4,7 +4,7 @@ emoji: 🦾
 colorFrom: green
 colorTo: blue
 sdk: gradio
-sdk_version: "4.44.1"
+sdk_version: "4.19.2"
 app_file: app.py
 pinned: true
 ---
@@ -16,7 +16,7 @@ Voice-Activated Object Detection for Accessibility
 ## 🎤 How to Use
 
 1. Allow camera and microphone
-2. Capture image from webcam
+2. Capture image from webcam  
 3. Say "Detect" or click button
 4. Listen to results
 5. Repeat!
