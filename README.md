@@ -11,17 +11,20 @@ pinned: true
 
 # 🦾 NoonVision – Hands-Free AI Vision Assistant
 
-Voice-Activated Object Detection for Accessibility
+**100% Voice-Controlled Object Detection for Blind/Visually Impaired Users**
 
-## 🎤 How to Use
+## 🎤 How It Works (Completely Hands-Free!)
 
-1. Allow camera and microphone
-2. Capture image from webcam  
-3. Say "Detect" or click button
-4. Listen to results
-5. Repeat!
+1. **Say "Detect"** → Camera captures automatically
+2. **Wait** → AI analyzes the image
+3. **Listen** → Audio tells you what's in front of you
+4. **Auto-reset** → Camera returns to live view
+
+**No buttons needed!**
 
 ## 🌐 Best Browsers
 
 - ✅ Chrome (recommended)
 - ✅ Edge
+
+Made with ❤️ for accessibility
