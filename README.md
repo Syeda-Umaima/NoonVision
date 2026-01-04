@@ -11,45 +11,52 @@ pinned: true
 
 # 🦾 NoonVision – 100% Hands-Free AI Vision Assistant
 
-**Designed for Blind and Visually Impaired Users**
-
-## ✨ Completely Voice-Controlled
-
-No buttons to click. No screen to touch. Just speak.
+**Completely Voice-Controlled Object Detection for Blind/Visually Impaired Users**
 
 ## 🎤 How It Works
 
-1. **Allow camera & microphone** when prompted
-2. **Say "Detect"** - camera captures automatically
-3. **Listen** - AI describes what's in front of you
-4. **Automatic reset** - ready for next scan
+1. **Camera runs continuously** - Live video stream always active
+2. **Say "Detect"** - Automatically captures current frame
+3. **AI analyzes** - YOLO detects objects in the image
+4. **Speaks results** - "I can see a person and a laptop..."
+5. **Auto-resets** - Ready for next detection immediately
+
+**No buttons needed! 100% hands-free!**
 
 ## 🗣️ Voice Commands
 
 - "Detect"
-- "What do you see"
+- "What do you see?"
 - "Identify"
 - "Scan"
 - "Look"
 - "Check"
 
-## 🎯 Features
+## ✨ Features
 
-- 🔴 **Live camera stream** - always running
-- 🎤 **Always listening** - continuous voice recognition
-- 📸 **Auto capture** - no button clicks
-- 🔍 **80+ objects** - YOLO detection
-- 🔊 **Audio feedback** - speaks results aloud
-- 🔄 **Auto reset** - ready for next scan
+- 🎯 Detects 80+ object types
+- 📷 Continuous live camera stream
+- 🔊 Complete audio feedback
+- ⚡ Fast 1-2 second response
+- 🔄 Automatic reset after detection
 
-## 🌐 Browser Support
+## 🌐 Browser Requirements
 
 - ✅ **Chrome** (recommended)
 - ✅ **Edge**
-- ⚠️ Firefox (limited voice support)
+- ❌ Firefox (limited speech recognition)
+- ❌ Safari (limited speech recognition)
 
-## ♿ Accessibility
+## 🔧 Permissions Required
 
-Built specifically for users who cannot see or interact with a screen. Everything is controlled by voice.
+- 📷 Camera access
+- 🎤 Microphone access
 
+## 💡 Debug
+
+Open browser console (F12) and type:
+- `noonvision.status()` - Check current state
+- `noonvision.performDetection()` - Trigger detection manually
+
+---
 Made with ❤️ for accessibility
