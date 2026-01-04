@@ -9,22 +9,47 @@ app_file: app.py
 pinned: true
 ---
 
-# 🦾 NoonVision – Hands-Free AI Vision Assistant
+# 🦾 NoonVision – 100% Hands-Free AI Vision Assistant
 
-**100% Voice-Controlled Object Detection for Blind/Visually Impaired Users**
+**Designed for Blind and Visually Impaired Users**
 
-## 🎤 How It Works (Completely Hands-Free!)
+## ✨ Completely Voice-Controlled
 
-1. **Say "Detect"** → Camera captures automatically
-2. **Wait** → AI analyzes the image
-3. **Listen** → Audio tells you what's in front of you
-4. **Auto-reset** → Camera returns to live view
+No buttons to click. No screen to touch. Just speak.
 
-**No buttons needed!**
+## 🎤 How It Works
 
-## 🌐 Best Browsers
+1. **Allow camera & microphone** when prompted
+2. **Say "Detect"** - camera captures automatically
+3. **Listen** - AI describes what's in front of you
+4. **Automatic reset** - ready for next scan
 
-- ✅ Chrome (recommended)
-- ✅ Edge
+## 🗣️ Voice Commands
+
+- "Detect"
+- "What do you see"
+- "Identify"
+- "Scan"
+- "Look"
+- "Check"
+
+## 🎯 Features
+
+- 🔴 **Live camera stream** - always running
+- 🎤 **Always listening** - continuous voice recognition
+- 📸 **Auto capture** - no button clicks
+- 🔍 **80+ objects** - YOLO detection
+- 🔊 **Audio feedback** - speaks results aloud
+- 🔄 **Auto reset** - ready for next scan
+
+## 🌐 Browser Support
+
+- ✅ **Chrome** (recommended)
+- ✅ **Edge**
+- ⚠️ Firefox (limited voice support)
+
+## ♿ Accessibility
+
+Built specifically for users who cannot see or interact with a screen. Everything is controlled by voice.
 
 Made with ❤️ for accessibility
