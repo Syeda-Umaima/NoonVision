@@ -13,15 +13,12 @@ pinned: true
 
 **Completely Voice-Controlled Object Detection for Blind/Visually Impaired Users**
 
-## 🎤 How It Works
+## 🎤 How It Works (No Buttons Needed!)
 
-1. **Camera runs continuously** - Live video stream always active
-2. **Say "Detect"** - Automatically captures current frame
-3. **AI analyzes** - YOLO detects objects in the image
-4. **Speaks results** - "I can see a person and a laptop..."
-5. **Auto-resets** - Ready for next detection immediately
-
-**No buttons needed! 100% hands-free!**
+1. **Allow permissions** - Camera and microphone
+2. **Say "Detect"** - Camera automatically captures current frame
+3. **Listen** - AI describes what it sees
+4. **Repeat** - System automatically returns to listening mode
 
 ## 🗣️ Voice Commands
 
@@ -34,29 +31,24 @@ pinned: true
 
 ## ✨ Features
 
-- 🎯 Detects 80+ object types
-- 📷 Continuous live camera stream
-- 🔊 Complete audio feedback
-- ⚡ Fast 1-2 second response
-- 🔄 Automatic reset after detection
+- 📷 **Live camera** - Always streaming
+- 🎤 **Voice activated** - Say "Detect" to scan
+- 🔊 **Audio feedback** - Speaks results aloud
+- 🔄 **Auto-reset** - Ready for next scan automatically
+- 🎯 **80+ objects** - Detects people, cars, phones, etc.
 
 ## 🌐 Browser Requirements
 
 - ✅ **Chrome** (recommended)
 - ✅ **Edge**
-- ❌ Firefox (limited speech recognition)
-- ❌ Safari (limited speech recognition)
 
-## 🔧 Permissions Required
-
-- 📷 Camera access
-- 🎤 Microphone access
-
-## 💡 Debug
+## 🐛 Debugging
 
 Open browser console (F12) and type:
-- `noonvision.status()` - Check current state
-- `noonvision.performDetection()` - Trigger detection manually
+```javascript
+noonvision.status()  // Check current state
+noonvision.doDetection()  // Trigger detection manually
+```
 
 ---
 Made with ❤️ for accessibility
