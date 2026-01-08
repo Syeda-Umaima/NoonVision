@@ -9,61 +9,82 @@ app_file: app.py
 pinned: true
 ---
 
-# 🦾 NoonVision
+<p align="center">
+  <img src="https://em-content.zobj.net/source/apple/391/mechanical-arm_1f9be.png" width="80" alt="NoonVision Logo">
+</p>
 
-**Hands-Free AI Vision Assistant for the Visually Impaired**
+<h1 align="center">NoonVision</h1>
 
-> Empowering independence through voice-controlled computer vision
+<p align="center">
+  <b>Hands-Free AI Vision Assistant for the Visually Impaired</b><br>
+  <i>Say "Detect" and let AI describe the world around you</i>
+</p>
 
-## ✨ What It Does
+<p align="center">
+  <img src="https://img.shields.io/badge/Voice-Controlled-22c55e?style=flat-square" alt="Voice">
+  <img src="https://img.shields.io/badge/YOLOv8-Powered-3b82f6?style=flat-square" alt="YOLO">
+  <img src="https://img.shields.io/badge/80+-Objects-8b5cf6?style=flat-square" alt="Objects">
+</p>
 
-NoonVision enables blind and visually impaired individuals to understand their surroundings using just their voice. Simply say **"Detect"** and AI describes the world around you.
+---
 
-- 🎤 **100% Voice Controlled** — No buttons required
-- 👁️ **80+ Objects** — People, vehicles, animals, furniture & more
-- ⚡ **Real-Time** — Results in 1-2 seconds
-- 🔊 **Audio Feedback** — Natural speech descriptions
+### 🎯 The Problem
 
-## 🚀 How To Use
+Blind and visually impaired individuals face daily challenges understanding their surroundings. Traditional assistive tools often require physical interaction, which isn't always practical.
 
-1. **Click** anywhere on the page to start
-2. **Allow** camera & microphone access
-3. **Say** "Detect" (or "scan", "look", "what do you see")
-4. **Listen** to the audio description
-5. **Repeat** — system auto-resets for next scan
+### 💡 Our Solution
 
-## 🗣️ Voice Commands
+NoonVision is a **completely hands-free** vision assistant. Just speak, and AI tells you what's in front of you. No buttons. No touching. Just your voice.
 
-| Command | Action |
-|---------|--------|
-| "Detect" | Scan surroundings |
-| "What do you see?" | Same as detect |
-| "Scan" / "Look" | Quick scan |
-| "Identify" / "Check" | Identify objects |
+---
 
-## 🛠️ Tech Stack
+### 🚀 Getting Started
 
-- **Detection:** YOLOv8m
-- **UI:** Gradio
-- **Speech:** Web Speech API
-- **TTS:** Google gTTS
+1. **Click anywhere** on the page to initialize
+2. **Allow** camera and microphone when prompted  
+3. **Say "Detect"** when you want to scan
+4. **Listen** as NoonVision describes what it sees
 
-## 🌐 Browser Support
+That's it. The system automatically returns to listening mode after each scan.
 
-| Browser | Support |
-|---------|---------|
-| ✅ Chrome | Recommended |
-| ✅ Edge | Full support |
-| ⚠️ Firefox/Safari | Limited |
+---
 
-## 🐛 Debug
+### 🗣️ Voice Commands
 
-Open browser console (F12) and run:
-```javascript
-noonvision.status()       // Check state
-noonvision.doDetection()  // Manual trigger
+You can say any of these naturally:
+
+> *"Detect"* · *"What do you see?"* · *"Scan"* · *"Look"* · *"Identify"* · *"Check"*
+
+---
+
+### ⚡ Features
+
+**🎤 100% Voice Controlled** — No physical interaction needed
+
+**👁️ 80+ Object Types** — Recognizes people, vehicles, animals, furniture, electronics, and everyday items
+
+**🔊 Natural Audio** — Speaks results in clear, conversational English
+
+**⚡ Real-Time** — Detection completes in 1-2 seconds
+
+---
+
+### 🌐 Best Experience
+
+Use **Chrome** or **Edge** for full voice recognition support.
+
+---
+
+### 🔧 Debug Mode
+
+Open browser console (F12) and type:
+```js
+noonvision.status()
 ```
 
 ---
 
-<p align="center">Made with ❤️ for Accessibility</p>
+<p align="center">
+  <b>Built with ❤️ for Accessibility</b><br>
+  <sub>YOLOv8 • Gradio • Web Speech API • gTTS</sub>
+</p>
