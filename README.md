@@ -19,38 +19,37 @@ NoonVision is a **100% voice-controlled** object detection system designed for b
 
 ## 📸 See It In Action
 
-<table>
-  <tr>
-    <td align="center">
-      <img src="Output Images/3.png" width="100%"><br>
-      <b>Beautiful Interface</b>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Syeda-Umaima/NoonVision/main/Output%20Images/4.png" width="90%" alt="NoonVision Interface">
+</p>
+<p align="center"><b>✨ Beautiful, Accessible Interface</b></p>
+
+---
+
+### 🎯 Detection Results
 
 <table>
   <tr>
-    <td align="center">
-      <img src="Output Images/1.png" width="100%"><br>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/Syeda-Umaima/NoonVision/main/Output%20Images/1.png" alt="Room Detection"><br>
       <b>Room Detection</b><br>
       <sub>Detects: bowl, clock, bed</sub>
     </td>
-    <td align="center">
-      <img src="Output Images/2.png" width="100%"><br>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/Syeda-Umaima/NoonVision/main/Output%20Images/2.png" alt="Person Detection"><br>
       <b>Person & Object Detection</b><br>
       <sub>Detects: person, cell phones</sub>
     </td>
   </tr>
 </table>
 
-<table>
-  <tr>
-    <td align="center">
-      <img src="Output Images/4.png" width="100%"><br>
-      <b>Voice Commands & Audio Response</b>
-    </td>
-  </tr>
-</table>
+---
+
+### 🎤 Voice Commands & Audio Response
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Syeda-Umaima/NoonVision/main/Output%20Images/3.png" width="90%" alt="Voice Commands">
+</p>
 
 ---
 
@@ -73,17 +72,15 @@ NoonVision is a **100% voice-controlled** object detection system designed for b
 3. **Say "Detect"** when ready to scan  
 4. **Listen** to the audio description  
 
-The system automatically returns to listening mode after each scan.
-
 ---
 
-## 🗣️ Voice Commands
+## 🗣️ Supported Voice Commands
 
 > *"Detect"* · *"What do you see?"* · *"Scan"* · *"Look"* · *"Identify"* · *"Check"*
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ Built With
 
 **YOLOv8** · **Gradio** · **Web Speech API** · **Google TTS**
 
@@ -95,6 +92,4 @@ The system automatically returns to listening mode after each scan.
 
 ---
 
-<p align="center">
-  <b>Made with ❤️ for Accessibility</b>
-</p>
+<p align="center"><b>Made with ❤️ for Accessibility</b></p>
