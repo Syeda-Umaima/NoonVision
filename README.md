@@ -9,82 +9,92 @@ app_file: app.py
 pinned: true
 ---
 
-<p align="center">
-  <img src="https://em-content.zobj.net/source/apple/391/mechanical-arm_1f9be.png" width="80" alt="NoonVision Logo">
-</p>
+# 🦾 NoonVision — Hands-Free AI Vision Assistant
 
-<h1 align="center">NoonVision</h1>
+> **Empowering the visually impaired to see the world through voice**
 
-<p align="center">
-  <b>Hands-Free AI Vision Assistant for the Visually Impaired</b><br>
-  <i>Say "Detect" and let AI describe the world around you</i>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Voice-Controlled-22c55e?style=flat-square" alt="Voice">
-  <img src="https://img.shields.io/badge/YOLOv8-Powered-3b82f6?style=flat-square" alt="YOLO">
-  <img src="https://img.shields.io/badge/80+-Objects-8b5cf6?style=flat-square" alt="Objects">
-</p>
+NoonVision is a **100% voice-controlled** object detection system designed for blind and visually impaired users. No buttons, no touching — just say **"Detect"** and AI describes your surroundings instantly.
 
 ---
 
-### 🎯 The Problem
+## 📸 See It In Action
 
-Blind and visually impaired individuals face daily challenges understanding their surroundings. Traditional assistive tools often require physical interaction, which isn't always practical.
+<table>
+  <tr>
+    <td align="center">
+      <img src="Output Images/4.png" width="100%"><br>
+      <b>Beautiful Interface</b>
+    </td>
+  </tr>
+</table>
 
-### 💡 Our Solution
+<table>
+  <tr>
+    <td align="center">
+      <img src="Output Images/1.png" width="100%"><br>
+      <b>Room Detection</b><br>
+      <sub>Detects: bowl, clock, bed</sub>
+    </td>
+    <td align="center">
+      <img src="Output Images/2.png" width="100%"><br>
+      <b>Person & Object Detection</b><br>
+      <sub>Detects: person, cell phones</sub>
+    </td>
+  </tr>
+</table>
 
-NoonVision is a **completely hands-free** vision assistant. Just speak, and AI tells you what's in front of you. No buttons. No touching. Just your voice.
+<table>
+  <tr>
+    <td align="center">
+      <img src="Output Images/3.png" width="100%"><br>
+      <b>Voice Commands & Audio Response</b>
+    </td>
+  </tr>
+</table>
 
 ---
 
-### 🚀 Getting Started
+## ✨ Key Features
 
-1. **Click anywhere** on the page to initialize
-2. **Allow** camera and microphone when prompted  
-3. **Say "Detect"** when you want to scan
-4. **Listen** as NoonVision describes what it sees
-
-That's it. The system automatically returns to listening mode after each scan.
+| Feature | Description |
+|---------|-------------|
+| 🎤 **Voice Controlled** | Just say "Detect" — no buttons needed |
+| 👁️ **80+ Objects** | People, furniture, electronics, vehicles & more |
+| 🔊 **Audio Feedback** | Natural speech describes what's detected |
+| ⚡ **Real-Time** | Results in 1-2 seconds |
+| ♿ **Accessible** | Built specifically for the visually impaired |
 
 ---
 
-### 🗣️ Voice Commands
+## 🚀 How To Use
 
-You can say any of these naturally:
+1. **Click anywhere** on the page to start  
+2. **Allow** camera and microphone access  
+3. **Say "Detect"** when ready to scan  
+4. **Listen** to the audio description  
+
+The system automatically returns to listening mode after each scan.
+
+---
+
+## 🗣️ Voice Commands
 
 > *"Detect"* · *"What do you see?"* · *"Scan"* · *"Look"* · *"Identify"* · *"Check"*
 
 ---
 
-### ⚡ Features
+## 🛠️ Tech Stack
 
-**🎤 100% Voice Controlled** — No physical interaction needed
-
-**👁️ 80+ Object Types** — Recognizes people, vehicles, animals, furniture, electronics, and everyday items
-
-**🔊 Natural Audio** — Speaks results in clear, conversational English
-
-**⚡ Real-Time** — Detection completes in 1-2 seconds
+**YOLOv8** · **Gradio** · **Web Speech API** · **Google TTS**
 
 ---
 
-### 🌐 Best Experience
+## 🌐 Browser Support
 
-Use **Chrome** or **Edge** for full voice recognition support.
-
----
-
-### 🔧 Debug Mode
-
-Open browser console (F12) and type:
-```js
-noonvision.status()
-```
+✅ Chrome (Recommended) · ✅ Edge · ⚠️ Firefox/Safari (Limited)
 
 ---
 
 <p align="center">
-  <b>Built with ❤️ for Accessibility</b><br>
-  <sub>YOLOv8 • Gradio • Web Speech API • gTTS</sub>
+  <b>Made with ❤️ for Accessibility</b>
 </p>
