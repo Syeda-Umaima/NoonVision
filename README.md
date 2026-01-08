@@ -20,7 +20,7 @@ NoonVision is a **100% voice-controlled** object detection system designed for b
 ## 📸 See It In Action
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Syeda-Umaima/NoonVision/main/Output%20Images/4.png" width="90%" alt="NoonVision Interface">
+  <img src="https://raw.githubusercontent.com/Syeda-Umaima/NoonVision/main/Output%20Images/3.png" width="90%" alt="NoonVision Interface">
 </p>
 <p align="center"><b>✨ Beautiful, Accessible Interface</b></p>
 
@@ -48,7 +48,7 @@ NoonVision is a **100% voice-controlled** object detection system designed for b
 ### 🎤 Voice Commands & Audio Response
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Syeda-Umaima/NoonVision/main/Output%20Images/3.png" width="90%" alt="Voice Commands">
+  <img src="https://raw.githubusercontent.com/Syeda-Umaima/NoonVision/main/Output%20Images/4.png" width="90%" alt="Voice Commands">
 </p>
 
 ---
