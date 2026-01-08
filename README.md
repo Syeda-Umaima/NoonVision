@@ -22,7 +22,7 @@ NoonVision is a **100% voice-controlled** object detection system designed for b
 <table>
   <tr>
     <td align="center">
-      <img src="Output Images/4.png" width="100%"><br>
+      <img src="Output Images/3.png" width="100%"><br>
       <b>Beautiful Interface</b>
     </td>
   </tr>
@@ -46,7 +46,7 @@ NoonVision is a **100% voice-controlled** object detection system designed for b
 <table>
   <tr>
     <td align="center">
-      <img src="Output Images/3.png" width="100%"><br>
+      <img src="Output Images/4.png" width="100%"><br>
       <b>Voice Commands & Audio Response</b>
     </td>
   </tr>
