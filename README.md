@@ -15,6 +15,10 @@ pinned: true
 
 NoonVision is a **100% voice-controlled** object detection system designed for blind and visually impaired users. No buttons, no touching — just say **"Detect"** and AI describes your surroundings instantly.
 
+## 🌐 Live Application
+
+Explore the real-time dashboard and predictive analytics here:  
+**[NoonVision — Live Dashboard](https://huggingface.co/spaces/SyedaUmaima56/noonvision)**
 ---
 
 ## 📸 See It In Action
